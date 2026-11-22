@@ -51,3 +51,8 @@ The release APK is signed with the debug key so it can be sideloaded (enable "in
 
 ## Tests
 `cd backend && npm test` (pricing/ETA logic) and `cd android && ./gradlew testDebugUnitTest` (response parsing).
+
+## Catalogue
+The demo catalogue has the local Bengaluru restaurants plus 16 national chains (Domino's, McDonald's, KFC, Behrouz, Starbucks, ...) with 3 outlets each in Bengaluru, Mumbai, Delhi, Hyderabad, Chennai, Pune and Kolkata. Search shows restaurants within 20 km of you; outside those cities the app falls back to Bengaluru.
+
+This is illustrative data, not Swiggy/Zomato's real listings. To use your own, set `CATALOG_FILE=/path/to/restaurants.json` (array of objects shaped like those in `backend/src/data.js`).

@@ -1,5 +1,7 @@
 const { distanceKm } = require('./geo');
 const { restaurants, PLATFORM_IDS } = require('./data');
+const COVERAGE_KM = 20;
+const MAX_RESULTS = 60;
 const { provider } = require('./providers');
 
 const DEFAULT_LOCATION = { lat: 12.9716, lng: 77.5946 }; // MG Road, Bengaluru
@@ -7,7 +9,9 @@ const DEFAULT_LOCATION = { lat: 12.9716, lng: 77.5946 }; // MG Road, Bengaluru
 function parseLocation(lat, lng) {
   const la = Number(lat), ln = Number(lng);
   if (Number.isFinite(la) && Number.isFinite(ln) && Math.abs(la) <= 90 && Math.abs(ln) <= 180) {
-    return { lat: la, lng: ln };
+    // If we have no restaurants within coverage, fall back to the demo city so the app is still usable.
+    if (restaurants.some((r) => distanceKm({ lat: la, lng: ln }, r) <= COVERAGE_KM)) return { lat: la, lng: ln };
+    return { ...DEFAULT_LOCATION, snapped: true };
   }
   return DEFAULT_LOCATION;
 }
@@ -25,7 +29,9 @@ function searchRestaurants(q, location) {
   return restaurants
     .filter((r) => !needle || `${r.name} ${r.cuisine} ${r.area}`.toLowerCase().includes(needle))
     .map((r) => publicRestaurant(r, location))
-    .sort((a, b) => a.distanceKm - b.distanceKm);
+    .filter((r) => r.distanceKm <= COVERAGE_KM)
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, MAX_RESULTS);
 }
 
 function getMenu(id) {

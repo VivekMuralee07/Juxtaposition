@@ -41,8 +41,10 @@ class ApiClient(baseUrl: String) {
 
     private fun loc(lat: Double?, lng: Double?) = if (lat != null && lng != null) "&lat=$lat&lng=$lng" else ""
 
-    fun restaurants(query: String, lat: Double?, lng: Double?): List<Restaurant> =
-        parseRestaurants(request("/api/restaurants?q=${URLEncoder.encode(query, "UTF-8")}${loc(lat, lng)}"))
+    fun restaurants(query: String, lat: Double?, lng: Double?): Pair<List<Restaurant>, String?> {
+        val body = request("/api/restaurants?q=${URLEncoder.encode(query, "UTF-8")}${loc(lat, lng)}")
+        return parseRestaurants(body) to parseLocationNote(body)
+    }
 
     fun menu(restaurantId: String): List<MenuItem> =
         parseMenu(request("/api/restaurants/${URLEncoder.encode(restaurantId, "UTF-8")}/menu"))
