@@ -5,13 +5,12 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
-    <!-- Needed so we can check whether Swiggy/Zomato/etc. are installed before deep-linking. -->
+    <!-- Directions / call / website buttons hand off to the user's own apps. -->
     <queries>
-        <package android:name="in.swiggy.android" />
-        <package android:name="com.application.zomato" />
-        <package android:name="com.magicpin.android" />
-        <package android:name="in.gov.ondc" />
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="geo" /></intent>
+        <intent><action android:name="android.intent.action.DIAL" /></intent>
     </queries>
+
 
     <application
         android:allowBackup="true"
