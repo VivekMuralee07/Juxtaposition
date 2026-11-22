@@ -12,7 +12,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.juxtaposition.app.AppViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
     var showSettings by remember { mutableStateOf(false) }
@@ -23,33 +22,29 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Nearby Eats", fontWeight = FontWeight.Bold) },
-                actions = {
-                    IconButton(onClick = onRequestLocation) { Icon(Icons.Default.MyLocation, "Refresh my location") }
-                    IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, "Settings") }
-                },
-            )
-        },
         snackbarHost = { SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background,
     ) { pad ->
-        Box(Modifier.padding(pad).fillMaxSize()) {
+        Column(Modifier.padding(pad).fillMaxSize()) {
+            Header(
+                subtitle = vm.origin?.let { "%.4f, %.4f  •  %d place%s".format(it.first, it.second, vm.visiblePlaces.size, if (vm.visiblePlaces.size == 1) "" else "s") }
+                    ?: "Finding your location…",
+                loading = vm.loading, onRefresh = onRequestLocation, onSettings = { showSettings = true },
+            )
             if (vm.origin == null && !vm.loading) {
-                Column(Modifier.align(Alignment.Center).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        if (vm.locationDenied) "Location permission is needed to find restaurants near you."
-                        else "Finding your location…",
-                        color = Muted,
-                    )
+                Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Text("📍", style = MaterialTheme.typography.displayMedium)
                     Spacer(Modifier.height(12.dp))
+                    Text(
+                        if (vm.locationDenied) "Location permission is needed to find restaurants near you." else "Finding your location…",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(16.dp))
                     Button(onClick = onRequestLocation) { Text(if (vm.locationDenied) "Allow location" else "Retry") }
                 }
             } else {
                 NearbyScreen(vm)
             }
-            if (vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
         }
     }
 
@@ -57,16 +52,31 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
 }
 
 @Composable
+internal fun Header(subtitle: String, loading: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit) {
+    Column {
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Nearby Eats", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                Text(subtitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            FilledTonalIconButton(onClick = onRefresh) { Icon(Icons.Default.MyLocation, "Refresh my location") }
+            FilledTonalIconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
+        }
+        Box(Modifier.fillMaxWidth().height(3.dp)) { if (loading) LinearProgressIndicator(Modifier.fillMaxWidth()) }
+    }
+}
+
+@Composable
 private fun SettingsDialog(current: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     var text by remember { mutableStateOf(current) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Server URL") },
+        title = { Text("Server URL", fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("Your Nearby Eats API (the Render service URL).", color = Muted)
+                Text("Your Nearby Eats API (the Render service URL).", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(text, { text = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(text, { text = it }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small)
             }
         },
         confirmButton = { TextButton(onClick = { onSave(text) }) { Text("Save") } },
