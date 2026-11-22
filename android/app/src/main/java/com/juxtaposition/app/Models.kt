@@ -18,6 +18,7 @@ data class Quote(
     val platformFee: Int, val taxes: Int, val discount: Int, val couponCode: String?, val total: Int,
     val etaMinutes: Int, val distanceKm: Double, val isCheapest: Boolean, val isFastest: Boolean,
     val isBestValue: Boolean, val savingsVsWorst: Int, val androidPackage: String?, val scheme: String?,
+    val source: String = "simulated", val sellerName: String? = null,
 )
 
 data class Comparison(
@@ -61,6 +62,8 @@ fun parseComparison(json: String): Comparison {
             isCheapest = q.optBoolean("isCheapest"), isFastest = q.optBoolean("isFastest"),
             isBestValue = q.optBoolean("isBestValue"), savingsVsWorst = q.optInt("savingsVsWorst"),
             androidPackage = link?.optString("androidPackage")?.takeIf { it.isNotEmpty() },
+            source = q.optString("source", "simulated"),
+            sellerName = q.optString("sellerName").takeIf { it.isNotEmpty() },
             scheme = link?.let { if (it.isNull("scheme")) null else it.optString("scheme") }?.takeIf { it.isNotEmpty() },
         )
     }

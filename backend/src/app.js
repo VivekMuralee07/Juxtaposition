@@ -1,10 +1,14 @@
 const express = require('express');
 const { compare, searchRestaurants, getMenu, parseLocation, BadRequest } = require('./compare');
-const { mode } = require('./providers');
+const { mode, ondcClient } = require('./providers');
+const { createOndcRouter } = require('./ondc/routes');
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '20kb' }));
+// ONDC catalogues can be large, and callback signatures are computed over the raw bytes.
+app.use(express.json({ limit: '8mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
+// ONDC network callbacks: public, signature-verified, so mounted before the per-IP rate limiter.
+if (ondcClient) app.use(createOndcRouter(ondcClient));
 
 // Tiny in-memory rate limiter (per IP, 60 req/min) - enough for a single Render instance.
 const hits = new Map();

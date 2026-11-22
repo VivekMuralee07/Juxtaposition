@@ -11,7 +11,7 @@ const PROFILES = {
   magicpin: { name: 'Magicpin', markup: 1.02, baseFee: 30, perKm: 4, platformFee: 0, speedKmh: 17, handoff: 8, color: '#7B3FE4',
               coupon: { code: 'MAGIC10', pct: 0.10, cap: 80, min: 200 }, pkg: 'com.magicpin.android', scheme: 'magicpin://' },
   ondc:     { name: 'ONDC (Ola/Paytm/Magicpin buyer apps)', markup: 0.95, baseFee: 25, perKm: 6, platformFee: 0, speedKmh: 18, handoff: 9, color: '#1B8A5A',
-              coupon: null, pkg: 'in.gov.ondc', scheme: null },
+              coupon: null, pkg: null, scheme: null },
 };
 
 function hash(str) {
@@ -26,11 +26,11 @@ function hash(str) {
 async function quote(platform, { restaurant, lines, location }) {
   const p = PROFILES[platform];
   if (!restaurant.platforms.includes(platform)) {
-    return { platform, name: p.name, color: p.color, available: false, reason: 'Restaurant not listed on this app' };
+    return { platform, name: p.name, color: p.color, available: false, source: 'simulated', reason: 'Restaurant not listed on this app' };
   }
   const km = distanceKm(location, restaurant);
   if (km > 15) {
-    return { platform, name: p.name, color: p.color, available: false, reason: 'Outside delivery range (' + km.toFixed(1) + ' km)' };
+    return { platform, name: p.name, color: p.color, available: false, source: 'simulated', reason: 'Outside delivery range (' + km.toFixed(1) + ' km)' };
   }
 
   // Per-item menu price differs by app (menu markup is common on aggregators).
@@ -58,7 +58,7 @@ async function quote(platform, { restaurant, lines, location }) {
   const eta = Math.round(restaurant.prepMinutes + p.handoff + travel + hash(platform + restaurant.id + 'eta') * 6);
 
   return {
-    platform, name: p.name, color: p.color, available: true,
+    platform, name: p.name, color: p.color, available: true, source: 'simulated',
     items, itemsTotal, deliveryFee, platformFee, taxes, discount, couponCode, total,
     etaMinutes: eta, distanceKm: Math.round(km * 10) / 10,
     deepLink: { scheme: p.scheme, androidPackage: p.pkg },

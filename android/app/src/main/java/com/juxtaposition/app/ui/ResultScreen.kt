@@ -33,8 +33,8 @@ fun ResultScreen(vm: AppViewModel) {
     val c = vm.comparison ?: return
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Summary(c) }
-        if (c.simulated) item {
-            Text("Demo mode: prices and times are simulated by the server. Connect a live data source to see real prices.",
+        if (c.results.any { it.available && it.source != "ondc" }) item {
+            Text("Quotes tagged Estimate are simulated. Quotes tagged Live ONDC price come from the ONDC network.",
                 style = MaterialTheme.typography.bodySmall, color = Muted)
         }
         items(c.results, key = { it.platform }) { QuoteCard(it, isBest = it.platform == c.bestPlatform) }
@@ -83,6 +83,7 @@ private fun QuoteCard(q: Quote, isBest: Boolean) {
                 return@Column
             }
             Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (q.source == "ondc") Tag("Live ONDC price", Color(0xFF0F766E)) else Tag("Estimate", Muted)
                 if (q.isCheapest) Tag("Cheapest", Green)
                 if (q.isFastest) Tag("Fastest", Color(0xFF2563EB))
                 if (q.isBestValue) Tag("Best value", Amber)
@@ -108,7 +109,11 @@ private fun QuoteCard(q: Quote, isBest: Boolean) {
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Hide breakdown" else "Price breakdown") }
                 Spacer(Modifier.weight(1f))
-                Button(onClick = { openApp(ctx, q) }, colors = ButtonDefaults.buttonColors(containerColor = accent)) { Text("Open app") }
+                if (q.androidPackage != null) {
+                    Button(onClick = { openApp(ctx, q) }, colors = ButtonDefaults.buttonColors(containerColor = accent)) { Text("Open app") }
+                } else if (q.sellerName != null) {
+                    Text("Order via an ONDC app", color = Muted, style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }
