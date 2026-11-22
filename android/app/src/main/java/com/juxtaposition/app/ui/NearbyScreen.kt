@@ -42,8 +42,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.juxtaposition.app.AppViewModel
+import com.juxtaposition.app.HoursStatus
 import com.juxtaposition.app.Place
 import com.juxtaposition.app.ViewMode
+import com.juxtaposition.app.hoursStatus
 
 private val RADII = listOf(500 to "500 m", 1000 to "1 km", 2000 to "2 km", 5000 to "5 km")
 private val TYPES = listOf<Pair<String?, String>>(null to "All", "restaurant" to "🍽️  Restaurants", "fast_food" to "🍔  Fast food", "cafe" to "☕  Cafes")
@@ -52,8 +54,9 @@ private val TYPES = listOf<Pair<String?, String>>(null to "All", "restaurant" to
 fun NearbyScreen(vm: AppViewModel) {
     NearbyContent(
         places = vm.visiblePlaces, selected = vm.selected, radiusM = vm.radiusM, typeFilter = vm.typeFilter,
-        viewMode = vm.viewMode, loading = vm.loading,
+        viewMode = vm.viewMode, loading = vm.loading, openNow = vm.openNow, vegOnly = vm.vegOnly,
         onRadius = vm::setRadius, onType = vm::updateTypeFilter, onMode = vm::updateViewMode, onSelect = vm::select,
+        onOpenNow = vm::updateOpenNow, onVegOnly = vm::updateVegOnly,
     )
 }
 
@@ -62,7 +65,9 @@ fun NearbyScreen(vm: AppViewModel) {
 @Composable
 fun NearbyContent(
     places: List<Place>, selected: Place?, radiusM: Int, typeFilter: String?, viewMode: ViewMode, loading: Boolean,
+    openNow: Boolean, vegOnly: Boolean,
     onRadius: (Int) -> Unit, onType: (String?) -> Unit, onMode: (ViewMode) -> Unit, onSelect: (Place?) -> Unit,
+    onOpenNow: (Boolean) -> Unit, onVegOnly: (Boolean) -> Unit,
     animateRadar: Boolean = true,
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -70,8 +75,7 @@ fun NearbyContent(
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             val modes = listOf(
                 Triple(ViewMode.LIST, "List", Icons.AutoMirrored.Filled.ViewList),
-                Triple(ViewMode.RADAR_2D, "Radar", Icons.Default.Radar),
-                Triple(ViewMode.RADAR_3D, "3D", Icons.Default.ViewInAr),
+                Triple(ViewMode.RADAR, "Radar", Icons.Default.Radar),
             )
             modes.forEachIndexed { i, (m, label, icon) ->
                 SegmentedButton(
@@ -89,8 +93,11 @@ fun NearbyContent(
         }
         Spacer(Modifier.height(10.dp))
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("🟢  Open now", openNow) { onOpenNow(!openNow) }
+            Box(Modifier.align(Alignment.CenterVertically).width(1.dp).height(20.dp).background(MaterialTheme.colorScheme.outlineVariant))
             RADII.forEach { (m, label) -> Chip(label, radiusM == m) { onRadius(m) } }
             Box(Modifier.align(Alignment.CenterVertically).width(1.dp).height(20.dp).background(MaterialTheme.colorScheme.outlineVariant))
+            Chip("🌱  Veg", vegOnly) { onVegOnly(!vegOnly) }
             TYPES.forEach { (t, label) -> Chip(label, typeFilter == t) { onType(t) } }
         }
         Spacer(Modifier.height(10.dp))
@@ -100,7 +107,7 @@ fun NearbyContent(
                 loading && places.isEmpty() -> SkeletonList()
                 places.isEmpty() -> EmptyState()
                 viewMode == ViewMode.LIST -> PlaceList(places, selected, onSelect)
-                else -> RadarCard(places, selected, radiusM, viewMode == ViewMode.RADAR_3D, onSelect, animateRadar)
+                else -> RadarCard(places, selected, radiusM, onSelect, animateRadar)
             }
         }
 
@@ -135,13 +142,13 @@ private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun RadarCard(places: List<Place>, selected: Place?, radiusM: Int, threeD: Boolean, onSelect: (Place?) -> Unit, animate: Boolean) {
+private fun RadarCard(places: List<Place>, selected: Place?, radiusM: Int, onSelect: (Place?) -> Unit, animate: Boolean) {
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Box(Modifier.weight(1f).fillMaxWidth().clip(MaterialTheme.shapes.large)) {
-            RadarView(places, selected, radiusM, threeD, onSelect, Modifier.fillMaxSize(), animate)
+            RadarView(places, selected, radiusM, onSelect, Modifier.fillMaxSize(), animate)
             Text(
-                if (threeD) "Drag to spin • tap a pin" else "Tap a dot for details",
-                Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
+                "Tap a dot for details • faded = closed now",
+                Modifier.align(Alignment.TopStart).padding(start = 14.dp, top = 12.dp),
                 color = Color(0xFF8394AA), style = MaterialTheme.typography.labelSmall,
             )
         }
@@ -184,6 +191,7 @@ private fun PlaceCard(p: Place, selected: Boolean, onClick: () -> Unit) {
                     listOfNotNull(p.typeLabel, p.cuisine).joinToString(" • "), maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                StatusText(p)
                 if (p.vegetarian != null) {
                     Text(if (p.vegetarian == "only") "🌱 Pure veg" else "🌱 Veg options", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                 }
@@ -191,6 +199,16 @@ private fun PlaceCard(p: Place, selected: Boolean, onClick: () -> Unit) {
             Spacer(Modifier.width(8.dp))
             DistancePill(p)
         }
+    }
+}
+
+/** "Open · closes 23:00" in green, "Closed · opens 10:00" in red; nothing when the hours are unknown. */
+@Composable
+private fun StatusText(p: Place) {
+    when (val st = p.hoursStatus()) {
+        is HoursStatus.Open -> Text(st.label, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF2F9E6B))
+        is HoursStatus.Closed -> Text(st.label, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
+        HoursStatus.Unknown -> {}
     }
 }
 
@@ -235,6 +253,7 @@ private fun PlaceSheet(p: Place, onClose: () -> Unit) {
                         listOfNotNull(p.typeLabel, p.cuisine, p.vegetarian?.let { if (it == "only") "Pure veg" else "Veg options" }).joinToString(" • "),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    StatusText(p)
                 }
                 IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") }
             }
