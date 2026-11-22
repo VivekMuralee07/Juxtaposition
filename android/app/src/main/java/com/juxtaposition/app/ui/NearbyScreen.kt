@@ -39,14 +39,15 @@ fun NearbyScreen(vm: AppViewModel) {
             TYPES.forEach { (t, label) -> FilterChip(selected = vm.typeFilter == t, onClick = { vm.updateTypeFilter(t) }, label = { Text(label) }) }
         }
         Text(
-            "${shown.size} place${if (shown.size == 1) "" else "s"} within ${RADII.firstOrNull { it.first == vm.radiusM }?.second ?: "${vm.radiusM} m"}",
+            "${shown.size} place${if (shown.size == 1) "" else "s"} within ${RADII.firstOrNull { it.first == vm.radiusM }?.second ?: "${vm.radiusM} m"}" +
+                (vm.origin?.let { " • you: %.4f, %.4f".format(it.first, it.second) } ?: ""),
             Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = Muted, style = MaterialTheme.typography.labelMedium,
         )
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 shown.isEmpty() && !vm.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    Text("No restaurants found here.\nTry a larger radius. OpenStreetMap coverage varies by area.", color = Muted)
+                    Text("No restaurants found here.\nCheck the coordinates above are really where you are,\ntry a larger radius, or tap the location button to refresh.\nOpenStreetMap coverage varies by area.", color = Muted)
                 }
                 vm.viewMode == ViewMode.LIST -> PlaceList(shown, vm.selected, vm::select)
                 else -> RadarView(shown, vm.selected, vm.radiusM, vm.viewMode == ViewMode.RADAR_3D, vm::select, Modifier.fillMaxSize())
