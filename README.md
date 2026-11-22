@@ -1,15 +1,46 @@
-# Juxtaposition
+# Nearby Eats (Juxtaposition)
 
-Compare the price **and** delivery time of the same meal across Swiggy, Zomato, Magicpin and ONDC, and get pointed to the best deal.
+Shows the restaurants, fast-food places and cafes around your **current location**, with the **distance and direction** to each, as a **list**, a **2D radar map**, or a **tilted, rotatable 3D view**. Tap a place for details, directions, call and website.
 
 ```
 android/   Kotlin + Jetpack Compose app  (-> APK)
 backend/   Node/Express API              (-> Render)
-dist/      Prebuilt APK (Juxtaposition-1.0.0.apk, minSdk 26 / Android 8+)
+dist/      Prebuilt APK (Juxtaposition-1.0.0.apk, v1.1.0, Android 8+)
 render.yaml  Render blueprint (starter plan)
 ```
 
 ## How it works
+1. The app asks for location permission and reads your position.
+2. It calls `GET /api/nearby?lat=&lng=&radius=` on your server.
+3. The server queries **OpenStreetMap** (Overpass API; free, no key), computes distance (straight-line) and compass bearing for each place, caches results for 5 minutes, and returns them sorted by distance.
+4. The app plots them: you at the centre, distance rings around you, N marker. In 3D, drag to spin the scene.
+
+**Data caveats:** OpenStreetMap is community-maintained, so coverage is good in big cities and patchier elsewhere, and it has **no ratings or menu prices**. Distances are straight-line (the detail card shows an approximate walking time). Map data (c) OpenStreetMap contributors. The public Overpass servers have fair-use limits; the server caches and identifies itself, but for heavy use run your own Overpass instance (`OVERPASS_URLS`).
+
+## API
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/health` | liveness |
+| GET | `/api/nearby` | `lat`, `lng` (required), `radius` metres 200-5000 (default 1500), `types` = `restaurant,fast_food,cafe` |
+
+## Deploy the backend on Render (starter plan)
+Render dashboard -> **New + -> Blueprint** -> select this repo (Root Directory `backend`, Build `npm ci`, Start `npm start`). Then in the app: **Settings (gear) -> Server URL** -> your `https://<service>.onrender.com`. Check `<url>/health` first.
+
+Local dev: `cd backend && npm i && npm start`; in the emulator use `http://10.0.2.2:3000`.
+
+## Build the APK
+JDK 17+, Android SDK (platform 34, build-tools 34.0.0):
+```
+cd android && ./gradlew testDebugUnitTest assembleRelease   # -> app/build/outputs/apk/release/app-release.apk
+```
+Signed with the debug key for sideloading; use your own keystore for the Play Store.
+
+## Tests
+`cd backend && npm test` and `cd android && ./gradlew testDebugUnitTest`.
+
+---
+## Earlier feature: price comparison (still in the backend, not used by the app)
+### How it worked
 1. Pick a restaurant (search by name/cuisine; optionally use your GPS location).
 2. Pick the meal (items + quantities).
 3. The app calls `POST /api/compare`; the backend asks every provider for a quote and returns, per app: item prices, delivery fee, platform fee, taxes, coupon discount, **total**, **ETA**, and badges (Cheapest / Fastest / Best value).

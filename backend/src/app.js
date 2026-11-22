@@ -1,6 +1,7 @@
 const express = require('express');
 const { compare, searchRestaurants, getMenu, parseLocation, BadRequest } = require('./compare');
 const { mode, ondcClient } = require('./providers');
+const nearbyApi = require('./nearby');
 const { createOndcRouter } = require('./ondc/routes');
 
 const app = express();
@@ -25,6 +26,16 @@ app.use((req, res, next) => {
 setInterval(() => { const n = Date.now(); for (const [k, v] of hits) if (n > v.reset) hits.delete(k); }, 60000).unref();
 
 app.get('/health', (_req, res) => res.json({ ok: true, mode }));
+
+app.get('/api/nearby', async (req, res, next) => {
+  try {
+    res.json(await nearbyApi.nearby(req.query));
+  } catch (e) {
+    if (e instanceof nearbyApi.BadRequest) return res.status(400).json({ error: e.message });
+    console.error('nearby failed:', e.message);
+    res.status(502).json({ error: 'Restaurant data source is busy. Please try again in a moment.' });
+  }
+});
 
 app.get('/api/restaurants', (req, res) => {
   const location = parseLocation(req.query.lat, req.query.lng);
