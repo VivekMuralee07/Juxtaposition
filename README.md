@@ -20,7 +20,7 @@ ETA = restaurant prep time + courier hand-off + distance / courier speed. Best v
 ## Important: data source
 **Swiggy and Zomato have no public consumer price API, and scraping their apps breaches their terms**, so this repo does not do that. Out of the box the backend runs in `PROVIDER_MODE=simulated`: a deterministic demo catalogue (Bengaluru) with realistic fee/markup/ETA logic. The app shows a "Demo mode" notice in that case.
 
-To get real prices, implement `backend/src/providers/live.js` with the same `quote(platform, ctx)` signature and register it in `providers/index.js`, then set `PROVIDER_MODE=live`. Legitimate sources: **ONDC** (open protocol; Magicpin/Paytm/Ola etc. are buyer apps on it) or partner/affiliate APIs you have an agreement with.
+Real prices come from **ONDC** (open network) via the integration below (`PROVIDER_MODE=hybrid`); Swiggy and Zomato quotes stay simulated "Estimate"s unless you have a partner API agreement (add one as another provider in `providers/index.js`).
 
 ## Deploy the backend on Render (starter plan)
 1. Render dashboard -> **New + -> Blueprint** -> select this repo. `render.yaml` creates the `juxtaposition-api` web service (plan: starter, root dir `backend`).
@@ -56,3 +56,16 @@ The release APK is signed with the debug key so it can be sideloaded (enable "in
 The demo catalogue has the local Bengaluru restaurants plus 16 national chains (Domino's, McDonald's, KFC, Behrouz, Starbucks, ...) with 3 outlets each in Bengaluru, Mumbai, Delhi, Hyderabad, Chennai, Pune and Kolkata. Search shows restaurants within 20 km of you; outside those cities the app falls back to Bengaluru.
 
 This is illustrative data, not Swiggy/Zomato's real listings. To use your own, set `CATALOG_FILE=/path/to/restaurants.json` (array of objects shaped like those in `backend/src/data.js`).
+
+## ONDC integration (real prices)
+`PROVIDER_MODE=hybrid` makes the **ONDC** quote real; Swiggy/Zomato/Magicpin stay estimates. In the app each card is tagged **Live ONDC price** or **Estimate**.
+
+How a quote is produced (`backend/src/ondc/`, `providers/ondc.js`): signed Beckn `/search` to the ONDC gateway (restaurant name + your area) -> sellers reply asynchronously to our `/on_search` -> we fuzzy-match the restaurant (same brand within 3 km) and your items -> signed `/select` to that seller -> `/on_select` returns the real quote (item prices, delivery, packing, taxes, discounts, total, delivery TAT). If ONDC times out or errors, that card falls back to an Estimate. Callbacks are signature-verified against the ONDC registry; forged ones get 401.
+
+**You must register as an ONDC buyer app first - credentials can't be generated for you.**
+1. `cd backend && node scripts/gen-ondc-keys.js` -> keep the private keys secret, give ONDC the public keys.
+2. Register as a *buyer app* (domain `ONDC:RET11`, food & beverage) with ONDC, starting in **staging**, then pre-prod, then prod. ONDC onboarding normally needs a registered business and a domain you control for the subscriber id (a custom domain on your Render service); confirm current requirements with ONDC.
+3. Set the env vars in `render.yaml` on Render (`ONDC_SUBSCRIBER_ID`, `ONDC_UK_ID`, `ONDC_SIGNING_PRIVATE_KEY`, `ONDC_ENCRYPTION_PRIVATE_KEY`, `ONDC_REGISTRY_ENC_PUBLIC_KEY`, `ONDC_REQUEST_ID`) and `PROVIDER_MODE=hybrid`. The service exposes `/ondc-site-verification.html`, `/on_subscribe`, `/on_search`, `/on_select`.
+4. Gateway/registry URLs default per `ONDC_ENV` (`src/ondc/config.js`); verify them against ONDC's current participant docs and override with `ONDC_GATEWAY_URL` / `ONDC_REGISTRY_URL` if needed.
+
+Known limits: delivery pincode is approximated from the nearest supported city centre (no reverse geocoding yet); only restaurants already in the catalogue are priced on ONDC (listing ONDC-only restaurants is a next step); the protocol code is tested against a mock network, not yet against live ONDC.

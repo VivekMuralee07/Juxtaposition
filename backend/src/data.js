@@ -74,13 +74,13 @@ const bengaluruLocal = [
 
 // ---- National chains, several outlets per city (illustrative demo data) ----
 const CITIES = {
-  Bengaluru: { lat: 12.9716, lng: 77.5946, areas: ['Koramangala', 'Indiranagar', 'HSR Layout', 'Whitefield', 'Jayanagar', 'MG Road'] },
-  Mumbai:    { lat: 19.0760, lng: 72.8777, areas: ['Bandra', 'Andheri', 'Powai', 'Lower Parel', 'Colaba', 'Thane'] },
-  Delhi:     { lat: 28.6139, lng: 77.2090, areas: ['Connaught Place', 'Saket', 'Hauz Khas', 'Dwarka', 'Rajouri Garden', 'Noida'] },
-  Hyderabad: { lat: 17.3850, lng: 78.4867, areas: ['Banjara Hills', 'Jubilee Hills', 'Hitech City', 'Madhapur', 'Gachibowli', 'Secunderabad'] },
-  Chennai:   { lat: 13.0827, lng: 80.2707, areas: ['T Nagar', 'Adyar', 'Anna Nagar', 'Velachery', 'OMR', 'Mylapore'] },
-  Pune:      { lat: 18.5204, lng: 73.8567, areas: ['Koregaon Park', 'Kothrud', 'Viman Nagar', 'Hinjewadi', 'Baner', 'Camp'] },
-  Kolkata:   { lat: 22.5726, lng: 88.3639, areas: ['Park Street', 'Salt Lake', 'New Town', 'Gariahat', 'Ballygunge', 'Howrah'] },
+  Bengaluru: { std: 'std:080', pincode: '560001', lat: 12.9716, lng: 77.5946, areas: ['Koramangala', 'Indiranagar', 'HSR Layout', 'Whitefield', 'Jayanagar', 'MG Road'] },
+  Mumbai:    { std: 'std:022', pincode: '400001', lat: 19.0760, lng: 72.8777, areas: ['Bandra', 'Andheri', 'Powai', 'Lower Parel', 'Colaba', 'Thane'] },
+  Delhi:     { std: 'std:011', pincode: '110001', lat: 28.6139, lng: 77.2090, areas: ['Connaught Place', 'Saket', 'Hauz Khas', 'Dwarka', 'Rajouri Garden', 'Noida'] },
+  Hyderabad: { std: 'std:040', pincode: '500001', lat: 17.3850, lng: 78.4867, areas: ['Banjara Hills', 'Jubilee Hills', 'Hitech City', 'Madhapur', 'Gachibowli', 'Secunderabad'] },
+  Chennai:   { std: 'std:044', pincode: '600001', lat: 13.0827, lng: 80.2707, areas: ['T Nagar', 'Adyar', 'Anna Nagar', 'Velachery', 'OMR', 'Mylapore'] },
+  Pune:      { std: 'std:020', pincode: '411001', lat: 18.5204, lng: 73.8567, areas: ['Koregaon Park', 'Kothrud', 'Viman Nagar', 'Hinjewadi', 'Baner', 'Camp'] },
+  Kolkata:   { std: 'std:033', pincode: '700001', lat: 22.5726, lng: 88.3639, areas: ['Park Street', 'Salt Lake', 'New Town', 'Gariahat', 'Ballygunge', 'Howrah'] },
 };
 
 const m = (id, name, price, veg) => ({ id, name, price, veg });
