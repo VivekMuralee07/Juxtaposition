@@ -1,0 +1,15 @@
+{
+  "name": "juxtaposition-backend",
+  "version": "1.0.0",
+  "description": "Price + ETA comparison API for food delivery apps (Swiggy, Zomato, Magicpin, ONDC)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "license": "MIT"
+}

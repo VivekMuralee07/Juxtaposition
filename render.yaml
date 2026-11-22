@@ -1,0 +1,16 @@
+# Render Blueprint: New + -> Blueprint -> select this repo.
+services:
+  - type: web
+    name: juxtaposition-api
+    runtime: node
+    plan: starter            # always-on (no cold starts)
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: PROVIDER_MODE
+        value: simulated     # switch to "live" once you add a real provider (see README)
