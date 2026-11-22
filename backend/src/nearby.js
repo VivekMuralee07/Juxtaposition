@@ -2,7 +2,9 @@
 // Data is community-maintained: coverage is good in big cities, patchier elsewhere, and OSM has no ratings.
 const { distanceKm } = require('./geo');
 
-const ENDPOINTS = (process.env.OVERPASS_URLS || 'https://overpass-api.de/api/interpreter,https://overpass.kumi.systems/api/interpreter').split(',');
+const ENDPOINTS = (process.env.OVERPASS_URLS ||
+  'https://overpass-api.de/api/interpreter,https://overpass.kumi.systems/api/interpreter,https://overpass.private.coffee/api/interpreter').split(',');
+const STALE_OK_MS = 6 * 60 * 60_000; // if every mirror fails, serve a previous answer for the same area up to this old
 const USER_AGENT = 'Juxtaposition-NearbyRestaurants/1.0 (self-hosted)';
 const TYPES = { restaurant: 'restaurant', fast_food: 'fast_food', cafe: 'cafe' };
 const CACHE_MS = 5 * 60_000;
@@ -52,27 +54,38 @@ function normalise(elements, origin) {
   return out.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, MAX_RESULTS);
 }
 
+class UpstreamError extends Error {
+  constructor(detail) { super(detail); this.detail = detail; }
+}
+const hostOf = (u) => { try { return new URL(u).host; } catch { return u; } };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function queryOverpass(query, fetchImpl) {
-  let lastErr;
+  const errors = [];
   for (const url of ENDPOINTS) {
     try {
       const res = await fetchImpl(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': USER_AGENT },
         body: 'data=' + encodeURIComponent(query),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(20_000),
       });
-      if (!res.ok) throw new Error(`Overpass ${res.status}`);
+      if (!res.ok) {
+        if (res.status === 429 || res.status === 504) await sleep(Number(process.env.OVERPASS_BACKOFF_MS ?? 1000)); // brief breather before the next mirror
+        throw new Error(`HTTP ${res.status}`);
+      }
       const json = await res.json();
       // Overpass reports timeouts / out-of-memory as HTTP 200 with an empty list and a "remark".
       // That is a failure, not "no restaurants here": try the next mirror and never cache it.
       if (json.remark && /error|timed out|out of memory|too busy/i.test(json.remark) && !(json.elements || []).length) {
-        throw new Error(`Overpass: ${json.remark}`);
+        throw new Error(String(json.remark).replace(/^runtime error:\s*/i, '').slice(0, 80));
       }
       return json;
-    } catch (e) { lastErr = e; }
+    } catch (e) {
+      errors.push(`${hostOf(url)}: ${e.cause?.code || e.name === 'TimeoutError' ? (e.cause?.code || 'timeout') : e.message}`);
+    }
   }
-  throw lastErr || new Error('No Overpass endpoint configured');
+  throw new UpstreamError(errors.join('; ') || 'no Overpass endpoint configured');
 }
 
 class BadRequest extends Error {}
@@ -94,6 +107,7 @@ async function nearby(params, { fetchImpl = globalThis.fetch, now = Date.now } =
   const key = `${lat.toFixed(3)},${lng.toFixed(3)}|${radiusM}|${types.sort().join()}`;
   const hit = cache.get(key);
   let places;
+  let stale = false;
   if (hit && now() - hit.at < CACHE_MS) places = hit.elements;
   else {
     if (!inflight.has(key)) {
@@ -101,10 +115,15 @@ async function nearby(params, { fetchImpl = globalThis.fetch, now = Date.now } =
         .then((j) => { cache.set(key, { at: now(), elements: j.elements || [] }); if (cache.size > 200) cache.delete(cache.keys().next().value); return j.elements || []; })
         .finally(() => inflight.delete(key)));
     }
-    places = await inflight.get(key);
+    try {
+      places = await inflight.get(key);
+    } catch (e) {
+      // Every mirror failed: better to show a slightly old list than nothing.
+      if (hit && now() - hit.at < STALE_OK_MS) { places = hit.elements; stale = true; } else throw e;
+    }
   }
   const origin = { lat, lng };
-  return { origin, radiusM, source: 'OpenStreetMap', places: normalise(places, origin) };
+  return { origin, radiusM, source: 'OpenStreetMap', stale, places: normalise(places, origin) };
 }
 
-module.exports = { nearby, normalise, bearingDeg, compass, buildQuery, BadRequest, _cache: cache };
+module.exports = { nearby, normalise, bearingDeg, compass, buildQuery, BadRequest, UpstreamError, _cache: cache };
