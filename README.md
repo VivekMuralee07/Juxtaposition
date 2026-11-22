@@ -1,6 +1,6 @@
 # Nearby Eats (Juxtaposition)
 
-Shows the restaurants, fast-food places and cafes around your **current location**, with the **distance and direction** to each, as a **list**, a **2D radar map**, or a **tilted, rotatable 3D view**. Tap a place for details, directions, call and website.
+Shows the restaurants, fast-food places and cafes around your **current location**, with the **distance and direction** to each, as a **list** or a **radar map**, with whether each place is **open right now** (and when it closes or next opens). Search by name or cuisine, filter by open now / veg / type, and tap a place for details, directions, call and website.
 
 ```
 android/   Kotlin + Jetpack Compose app  (-> APK)
@@ -13,7 +13,8 @@ render.yaml  Render blueprint (starter plan)
 1. The app asks for location permission and reads your position.
 2. It calls `GET /api/nearby?lat=&lng=&radius=` on your server.
 3. The server queries **OpenStreetMap** (Overpass API; free, no key), computes distance (straight-line) and compass bearing for each place, caches results for 5 minutes, and returns them sorted by distance.
-4. The app plots them: you at the centre, distance rings around you, N marker. In 3D, drag to spin the scene.
+4. The app plots them: you at the centre, distance rings around you, N marker; places closed right now are faded.
+5. Open/closed status is worked out on the phone from OpenStreetMap's `opening_hours` tag (common formats like `Mo-Sa 11:00-23:00; Su off`, overnight hours and 24/7). Public holidays are ignored, anything more exotic shows no status, and many places have no hours at all, so treat it as a guide.
 
 **Data caveats:** OpenStreetMap is community-maintained, so coverage is good in big cities and patchier elsewhere, and it has **no ratings or menu prices**. Distances are straight-line (the detail card shows an approximate walking time). Map data (c) OpenStreetMap contributors. The public Overpass servers have fair-use limits; the server caches and identifies itself, but for heavy use run your own Overpass instance (`OVERPASS_URLS`).
 

@@ -1,8 +1,11 @@
 package com.juxtaposition.app.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,6 +18,7 @@ import com.juxtaposition.app.AppViewModel
 @Composable
 fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
     var showSettings by remember { mutableStateOf(false) }
+    var searchOpen by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(vm.error) {
@@ -30,7 +34,19 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
                 subtitle = vm.origin?.let { "%.4f, %.4f  •  %d place%s".format(it.first, it.second, vm.visiblePlaces.size, if (vm.visiblePlaces.size == 1) "" else "s") }
                     ?: "Finding your location…",
                 loading = vm.loading, onRefresh = onRequestLocation, onSettings = { showSettings = true },
+                searchActive = searchOpen || vm.query.isNotEmpty(),
+                onSearch = { searchOpen = !searchOpen; if (!searchOpen) vm.updateQuery("") },
             )
+            AnimatedVisibility(searchOpen && vm.origin != null) {
+                OutlinedTextField(
+                    value = vm.query, onValueChange = vm::updateQuery, singleLine = true,
+                    placeholder = { Text("Search name or cuisine") },
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    trailingIcon = { if (vm.query.isNotEmpty()) IconButton(onClick = { vm.updateQuery("") }) { Icon(Icons.Default.Close, "Clear") } },
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                )
+            }
             if (vm.origin == null && !vm.loading) {
                 Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Text("📍", style = MaterialTheme.typography.displayMedium)
@@ -52,13 +68,17 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
 }
 
 @Composable
-internal fun Header(subtitle: String, loading: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit) {
+internal fun Header(
+    subtitle: String, loading: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit,
+    searchActive: Boolean = false, onSearch: () -> Unit = {},
+) {
     Column {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Nearby Eats", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
                 Text(subtitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            FilledTonalIconButton(onClick = onSearch) { Icon(if (searchActive) Icons.Default.Close else Icons.Default.Search, if (searchActive) "Close search" else "Search") }
             FilledTonalIconButton(onClick = onRefresh) { Icon(Icons.Default.MyLocation, "Refresh my location") }
             FilledTonalIconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
         }

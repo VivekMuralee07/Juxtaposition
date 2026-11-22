@@ -36,20 +36,13 @@ class NearbyTest {
         assertEquals(0.0, nx, 1e-9); assertEquals(1.0, ny, 1e-9) // north
     }
 
-    @Test fun projectionTopDownAndTilted() {
-        // top-down: north is straight up, 100 px per km
-        val up = RadarMath.project(0.0, 1.0, 0.0, 0.0, 100.0, 500f, 500f)
-        assertEquals(500f, up.x, 0.01f); assertEquals(400f, up.y, 0.01f)
-        // pin height has no effect when viewed top-down
-        assertEquals(400f, RadarMath.project(0.0, 1.0, 0.0, 0.0, 100.0, 500f, 500f, 30.0).y, 0.01f)
-        // tilted: ground squashed vertically and pin lifted
-        val flat = RadarMath.project(0.0, 1.0, 0.0, 1.0, 100.0, 500f, 500f)
-        assertTrue(flat.y > up.y)                    // closer to centre vertically than top-down
-        assertTrue(RadarMath.project(0.0, 1.0, 0.0, 1.0, 100.0, 500f, 500f, 30.0).y < flat.y) // pin top above its base
-        // rotating by 90 deg moves north to the screen's left/right
-        val rot = RadarMath.project(0.0, 1.0, 90.0, 0.0, 100.0, 500f, 500f)
-        assertEquals(400f, rot.x, 0.01f); assertEquals(500f, rot.y, 0.01f)
-        // farther north => larger depth
-        assertTrue(RadarMath.project(0.0, 2.0, 0.0, 1.0, 100.0, 0f, 0f).depth > flat.depth)
+    @Test fun projectionIsNorthUp() {
+        // 100 px per km, centre at (500, 500): north is straight up, east is to the right
+        val (nx, ny) = RadarMath.project(0.0, 1.0, 100.0, 500f, 500f)
+        assertEquals(500f, nx, 0.01f); assertEquals(400f, ny, 0.01f)
+        val (ex, ey) = RadarMath.project(2.0, 0.0, 100.0, 500f, 500f)
+        assertEquals(700f, ex, 0.01f); assertEquals(500f, ey, 0.01f)
+        val (sx, sy) = RadarMath.project(0.0, -0.5, 100.0, 500f, 500f)
+        assertEquals(500f, sx, 0.01f); assertEquals(550f, sy, 0.01f)
     }
 }

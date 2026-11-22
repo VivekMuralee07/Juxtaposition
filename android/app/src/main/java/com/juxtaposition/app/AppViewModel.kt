@@ -17,7 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class ViewMode { LIST, RADAR_2D, RADAR_3D }
+enum class ViewMode { LIST, RADAR }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -28,12 +28,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var typeFilter by mutableStateOf<String?>(null); private set
     var places by mutableStateOf<List<Place>>(emptyList()); private set
     var selected by mutableStateOf<Place?>(null); private set
-    var viewMode by mutableStateOf(ViewMode.RADAR_2D); private set
+    var viewMode by mutableStateOf(ViewMode.RADAR); private set
+    var query by mutableStateOf(""); private set
+    var openNow by mutableStateOf(false); private set
+    var vegOnly by mutableStateOf(false); private set
     var loading by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     var locationDenied by mutableStateOf(false); private set
 
-    val visiblePlaces get() = places.filter { typeFilter == null || it.type == typeFilter }
+    /** Places after the type / search / open-now / veg filters. */
+    val visiblePlaces: List<Place>
+        get() {
+            val q = query.trim().lowercase()
+            val now = java.time.LocalDateTime.now()
+            return places.filter { p ->
+                (typeFilter == null || p.type == typeFilter) &&
+                    (q.isEmpty() || p.name.lowercase().contains(q) || (p.cuisine?.lowercase()?.contains(q) == true)) &&
+                    (!vegOnly || p.vegetarian != null) &&
+                    (!openNow || p.hoursStatus(now) is HoursStatus.Open)
+            }
+        }
 
     fun saveApiUrl(url: String) {
         apiUrl = url.trim().ifEmpty { BuildConfig.DEFAULT_API_URL }
@@ -49,6 +63,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setRadius(m: Int) { radiusM = m; load() }
     fun updateTypeFilter(t: String?) { typeFilter = t; selected = null }
     fun updateViewMode(m: ViewMode) { viewMode = m }
+    fun updateQuery(q: String) { query = q; selected = null }
+    fun updateOpenNow(on: Boolean) { openNow = on; selected = null }
+    fun updateVegOnly(on: Boolean) { vegOnly = on; selected = null }
     fun select(p: Place?) { selected = p }
     fun dismissError() { error = null }
 
