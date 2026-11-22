@@ -63,7 +63,13 @@ async function queryOverpass(query, fetchImpl) {
         signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) throw new Error(`Overpass ${res.status}`);
-      return await res.json();
+      const json = await res.json();
+      // Overpass reports timeouts / out-of-memory as HTTP 200 with an empty list and a "remark".
+      // That is a failure, not "no restaurants here": try the next mirror and never cache it.
+      if (json.remark && /error|timed out|out of memory|too busy/i.test(json.remark) && !(json.elements || []).length) {
+        throw new Error(`Overpass: ${json.remark}`);
+      }
+      return json;
     } catch (e) { lastErr = e; }
   }
   throw lastErr || new Error('No Overpass endpoint configured');

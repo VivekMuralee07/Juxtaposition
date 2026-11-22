@@ -54,3 +54,17 @@ test('nearby: falls back to the next Overpass mirror', async () => {
   assert.strictEqual(n, 2);
   assert.ok(r.places.length > 0);
 });
+
+test('nearby: Overpass "remark" timeout is a failure, tried on next mirror, and never cached', async () => {
+  _cache.clear();
+  let n = 0;
+  const busy = async () => { n++; return { ok: true, json: async () => (n <= 2 ? { elements: [], remark: 'runtime error: Query timed out in "query" at line 1 after 26 seconds.' } : overpass) }; };
+  await assert.rejects(nearby({ lat: 28.61, lng: 77.2 }, { fetchImpl: busy }), /timed out/); // both mirrors busy
+  assert.strictEqual(_cache.size, 0, 'failed lookup must not be cached');
+  const ok = await nearby({ lat: 28.61, lng: 77.2 }, { fetchImpl: busy });             // next attempt succeeds
+  assert.ok(ok.places.length > 0);
+  // a genuine empty answer (no remark) is still a valid, cacheable result
+  _cache.clear();
+  const none = await nearby({ lat: 0.5, lng: 0.5 }, { fetchImpl: async () => ({ ok: true, json: async () => ({ elements: [] }) }) });
+  assert.deepStrictEqual(none.places, []);
+});
