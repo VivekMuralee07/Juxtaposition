@@ -32,6 +32,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var loading by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     var usingDeviceLocation by mutableStateOf(false); private set
+    var locationNote by mutableStateOf<String?>(null); private set
 
     private var lat: Double? = null
     private var lng: Double? = null
@@ -69,7 +70,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             loading = true; error = null
             runCatching { withContext(Dispatchers.IO) { api.restaurants(q, lat, lng) } }
-                .onSuccess { restaurants = it }
+                .onSuccess { restaurants = it.first; locationNote = it.second }
                 .onFailure { error = friendly(it) }
             loading = false
         }

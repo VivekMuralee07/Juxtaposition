@@ -23,7 +23,12 @@ setInterval(() => { const n = Date.now(); for (const [k, v] of hits) if (n > v.r
 app.get('/health', (_req, res) => res.json({ ok: true, mode }));
 
 app.get('/api/restaurants', (req, res) => {
-  res.json({ mode, restaurants: searchRestaurants(req.query.q, parseLocation(req.query.lat, req.query.lng)) });
+  const location = parseLocation(req.query.lat, req.query.lng);
+  res.json({
+    mode,
+    locationNote: location.snapped ? 'No restaurants near you yet - showing the Bengaluru demo catalogue' : null,
+    restaurants: searchRestaurants(req.query.q, location),
+  });
 });
 
 app.get('/api/restaurants/:id/menu', (req, res) => {

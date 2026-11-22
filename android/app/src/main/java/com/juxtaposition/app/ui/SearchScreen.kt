@@ -27,7 +27,12 @@ fun SearchScreen(vm: AppViewModel, onRequestLocation: () -> Unit) {
         Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             AssistChip(
                 onClick = onRequestLocation,
-                label = { Text(if (vm.usingDeviceLocation) "Using your location" else "Using demo location (Bengaluru) - tap to use mine") },
+                label = {
+                    Text(
+                        vm.locationNote ?: if (vm.usingDeviceLocation) "Using your location"
+                        else "Using demo location (Bengaluru) - tap to use mine"
+                    )
+                },
                 leadingIcon = { Icon(Icons.Default.MyLocation, null, Modifier.size(18.dp)) },
             )
         }

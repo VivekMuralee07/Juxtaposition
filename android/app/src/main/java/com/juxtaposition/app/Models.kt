@@ -70,3 +70,6 @@ fun parseComparison(json: String): Comparison {
         root.optInt("maxSavings"), root.optString("mode") == "simulated",
     )
 }
+
+fun parseLocationNote(json: String): String? =
+    JSONObject(json).let { if (it.isNull("locationNote")) null else it.optString("locationNote").takeIf { n -> n.isNotEmpty() } }

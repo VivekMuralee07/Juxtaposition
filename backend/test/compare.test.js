@@ -48,3 +48,17 @@ test('validation', async () => {
   await assert.rejects(compare({ restaurantId: 'meghana', items: [{ menuItemId: 'mf1', qty: 0 }], location: DEFAULT_LOCATION }), BadRequest);
   assert.strictEqual(getMenu('nope'), null);
 });
+
+test('catalogue is large, ids unique, covers multiple cities', () => {
+  const { restaurants } = require('../src/data');
+  assert.ok(restaurants.length > 100);
+  assert.strictEqual(new Set(restaurants.map((r) => r.id)).size, restaurants.length);
+  const mumbai = searchRestaurants('', { lat: 19.076, lng: 72.8777 });
+  assert.ok(mumbai.length >= 10 && mumbai.every((r) => r.distanceKm <= 20));
+});
+
+test('location with no coverage snaps to demo city', () => {
+  const { parseLocation } = require('../src/compare');
+  assert.strictEqual(parseLocation(35.0, 139.0).snapped, true);
+  assert.strictEqual(parseLocation(19.076, 72.8777).snapped, undefined);
+});
