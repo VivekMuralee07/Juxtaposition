@@ -33,7 +33,8 @@ app.get('/api/nearby', async (req, res, next) => {
   } catch (e) {
     if (e instanceof nearbyApi.BadRequest) return res.status(400).json({ error: e.message });
     console.error('nearby failed:', e.message);
-    res.status(502).json({ error: 'Restaurant data source is busy. Please try again in a moment.' });
+    const why = e instanceof nearbyApi.UpstreamError ? ` (${e.detail})` : '';
+    res.status(502).json({ error: `Restaurant data source is busy${why}. Please try again in a moment.` });
   }
 });
 

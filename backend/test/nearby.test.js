@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { nearby, normalise, bearingDeg, compass, BadRequest, _cache } = require('../src/nearby');
+process.env.OVERPASS_BACKOFF_MS = '0'; // no real waiting between mirrors in tests
+const { nearby, normalise, bearingDeg, compass, BadRequest, UpstreamError, _cache } = require('../src/nearby');
 
 const ORIGIN = { lat: 12.9716, lng: 77.5946 };
 const overpass = {
@@ -55,16 +56,48 @@ test('nearby: falls back to the next Overpass mirror', async () => {
   assert.ok(r.places.length > 0);
 });
 
-test('nearby: Overpass "remark" timeout is a failure, tried on next mirror, and never cached', async () => {
+const REMARK = { elements: [], remark: 'runtime error: Query timed out in "query" at line 1 after 26 seconds.' };
+
+test('nearby: Overpass "remark" timeout is a failure, never cached, and the error names every mirror', async () => {
   _cache.clear();
   let n = 0;
-  const busy = async () => { n++; return { ok: true, json: async () => (n <= 2 ? { elements: [], remark: 'runtime error: Query timed out in "query" at line 1 after 26 seconds.' } : overpass) }; };
-  await assert.rejects(nearby({ lat: 28.61, lng: 77.2 }, { fetchImpl: busy }), /timed out/); // both mirrors busy
+  const busy = async () => { n++; return { ok: true, json: async () => (n <= 3 ? REMARK : overpass) }; }; // all 3 mirrors time out, then recover
+  await assert.rejects(nearby({ lat: 28.61, lng: 77.2 }, { fetchImpl: busy }), (e) => {
+    assert.ok(e instanceof UpstreamError);
+    assert.match(e.detail, /overpass-api\.de: Query timed out/);
+    assert.match(e.detail, /overpass\.kumi\.systems/);
+    assert.match(e.detail, /overpass\.private\.coffee/);
+    return true;
+  });
   assert.strictEqual(_cache.size, 0, 'failed lookup must not be cached');
-  const ok = await nearby({ lat: 28.61, lng: 77.2 }, { fetchImpl: busy });             // next attempt succeeds
+  const ok = await nearby({ lat: 28.61, lng: 77.2 }, { fetchImpl: busy }); // next attempt succeeds
   assert.ok(ok.places.length > 0);
   // a genuine empty answer (no remark) is still a valid, cacheable result
   _cache.clear();
   const none = await nearby({ lat: 0.5, lng: 0.5 }, { fetchImpl: async () => ({ ok: true, json: async () => ({ elements: [] }) }) });
   assert.deepStrictEqual(none.places, []);
+});
+
+test('nearby: HTTP 429 from a mirror is reported with its status; a later mirror can still win', async () => {
+  _cache.clear();
+  let n = 0;
+  const f = async () => { n++; return n === 1 ? { ok: false, status: 429 } : { ok: true, json: async () => overpass }; };
+  assert.ok((await nearby({ lat: 22.57, lng: 88.36 }, { fetchImpl: f })).places.length > 0);
+  _cache.clear();
+  await assert.rejects(nearby({ lat: 22.58, lng: 88.37 }, { fetchImpl: async () => ({ ok: false, status: 429 }) }), /overpass-api\.de: HTTP 429/);
+});
+
+test('nearby: serves the previous list (stale) when every mirror fails', async () => {
+  _cache.clear();
+  let clock = 1_000_000;
+  const now = () => clock;
+  const first = await nearby({ lat: 18.52, lng: 73.85 }, { fetchImpl: mockFetch(), now });
+  assert.strictEqual(first.stale, false);
+  clock += 10 * 60_000; // cache (5 min) expired
+  const down = async () => ({ ok: false, status: 504 });
+  const second = await nearby({ lat: 18.52, lng: 73.85 }, { fetchImpl: down, now });
+  assert.strictEqual(second.stale, true);
+  assert.strictEqual(second.places.length, first.places.length);
+  clock += 7 * 60 * 60_000; // too old to be useful
+  await assert.rejects(nearby({ lat: 18.52, lng: 73.85 }, { fetchImpl: down, now }), UpstreamError);
 });
