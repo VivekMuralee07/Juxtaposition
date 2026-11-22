@@ -7,7 +7,7 @@ import kotlin.math.sin
 data class Projected(val x: Float, val y: Float, val depth: Float)
 
 object RadarMath {
-    const val MAX_TILT_DEG = 68.0
+    const val MAX_TILT_DEG = 58.0
 
     /** Position on the ground plane in km: x = east, y = north. */
     fun toPlane(bearingDeg: Int, distanceKm: Double): Pair<Double, Double> {
