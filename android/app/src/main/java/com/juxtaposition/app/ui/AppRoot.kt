@@ -37,6 +37,12 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
                 searchActive = searchOpen || vm.query.isNotEmpty(),
                 onSearch = { searchOpen = !searchOpen; if (!searchOpen) vm.updateQuery("") },
             )
+            vm.notice?.let { msg ->
+                Text(
+                    msg, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary,
+                )
+            }
             AnimatedVisibility(searchOpen && vm.origin != null) {
                 OutlinedTextField(
                     value = vm.query, onValueChange = vm::updateQuery, singleLine = true,

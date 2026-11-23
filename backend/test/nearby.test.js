@@ -62,12 +62,13 @@ const REMARK = { elements: [], remark: 'runtime error: Query timed out in "query
 test('nearby: Overpass "remark" timeout is a failure, never cached, and the error names every mirror', async () => {
   _cache.clear();
   let n = 0;
-  const busy = async () => { n++; return { ok: true, json: async () => (n <= 3 ? REMARK : overpass) }; }; // all 3 mirrors time out, then recover
+  const busy = async () => { n++; return { ok: true, json: async () => (n <= 4 ? REMARK : overpass) }; }; // all 4 mirrors time out, then recover
   await assert.rejects(nearby({ lat: 28.61, lng: 77.2 }, { fetchImpl: busy }), (e) => {
     assert.ok(e instanceof UpstreamError);
     assert.match(e.detail, /overpass-api\.de: Query timed out/);
     assert.match(e.detail, /overpass\.kumi\.systems/);
     assert.match(e.detail, /overpass\.private\.coffee/);
+    assert.match(e.detail, /overpass\.openstreetmap\.fr/);
     return true;
   });
   assert.strictEqual(_cache.size, 0, 'failed lookup must not be cached');
@@ -141,4 +142,21 @@ test('all mirrors hanging -> each reported as timeout, within the per-mirror lim
   });
   assert.ok(Date.now() - t0 < 1500);
   assert.strictEqual(_cache.size, 0);
+});
+
+test('diagnose reports each mirror separately (ok / HTTP error / timeout) without throwing', async () => {
+  const { diagnose } = require('../src/nearby');
+  let n = 0;
+  const f = async (url, opts) => {
+    n++;
+    if (n === 1) return { ok: true, json: async () => ({ elements: [{ type: 'node', id: 1 }] }) };
+    if (n === 2) return { ok: false, status: 429 };
+    return new Promise((_, rej) => opts.signal.addEventListener('abort', () => rej(opts.signal.reason || new Error('aborted'))));
+  };
+  const out = await diagnose({ fetchImpl: f, timeoutMs: 60 });
+  assert.strictEqual(out.length >= 3, true);
+  assert.deepStrictEqual([out[0].ok, out[1].ok, out[2].ok], [true, false, false]);
+  assert.strictEqual(out[1].error, 'HTTP 429');
+  assert.strictEqual(out[2].error, 'timeout');
+  assert.ok(out.every((m) => typeof m.ms === 'number' && m.host));
 });

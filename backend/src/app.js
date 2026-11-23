@@ -25,7 +25,15 @@ app.use((req, res, next) => {
 });
 setInterval(() => { const n = Date.now(); for (const [k, v] of hits) if (n > v.reset) hits.delete(k); }, 60000).unref();
 
-app.get('/health', (_req, res) => res.json({ ok: true, mode }));
+// RENDER_GIT_COMMIT is set by Render, so /health shows exactly which commit is live.
+const commit = (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || null;
+app.get('/health', (_req, res) => res.json({ ok: true, mode, commit }));
+
+// Open this in a browser to see whether the server can reach the OpenStreetMap servers at all.
+app.get('/api/diag', async (_req, res) => {
+  const mirrors = await nearbyApi.diagnose();
+  res.json({ commit, mirrors, anyOk: mirrors.some((m) => m.ok) });
+});
 
 app.get('/api/nearby', async (req, res, next) => {
   try {
