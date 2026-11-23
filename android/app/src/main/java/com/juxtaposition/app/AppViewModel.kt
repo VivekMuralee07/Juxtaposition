@@ -72,6 +72,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val hasData: Boolean get() = places.isNotEmpty()
 
+    // ---- app updates (the app is installed by hand, so it asks GitHub whether a newer release exists) ----
+    var update by mutableStateOf<UpdateInfo?>(null); private set
+    /** Result of a manual "Check for updates" (shown in Settings). */
+    var updateMessage by mutableStateOf<String?>(null); private set
+
+    fun checkForUpdates(manual: Boolean) {
+        val now = System.currentTimeMillis()
+        if (!manual && !UpdateChecker.shouldCheck(prefs.getLong("lastUpdateCheck", 0L), now)) return
+        if (manual) updateMessage = "Checking…"
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { UpdateChecker.fetch() } }
+                .onSuccess { json ->
+                    prefs.edit().putLong("lastUpdateCheck", now).apply()
+                    val info = UpdateChecker.parse(json, BuildConfig.VERSION_NAME)
+                    val dismissed = prefs.getString("dismissedUpdate", null) == info?.version
+                    update = if (info != null && (manual || !dismissed)) info else if (info == null) null else update
+                    if (manual) updateMessage = if (info != null) "Version ${info.version} is available." else "You're up to date (version ${BuildConfig.VERSION_NAME})."
+                }
+                .onFailure { if (manual) updateMessage = "Couldn't check for updates. Check your connection and try again." }
+        }
+    }
+
+    fun dismissUpdate() {
+        update?.let { prefs.edit().putString("dismissedUpdate", it.version).apply() }
+        update = null
+    }
+
+    fun clearUpdateMessage() { updateMessage = null }
+
+    init { checkForUpdates(manual = false) }
+
     /** What the screens show: filters applied, distances measured from where the user is right now. */
     val visiblePlaces: List<Place>
         get() {

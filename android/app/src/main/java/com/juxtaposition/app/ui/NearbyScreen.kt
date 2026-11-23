@@ -45,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,6 +56,7 @@ import com.juxtaposition.app.RadarZoom
 import com.juxtaposition.app.emoji
 import com.juxtaposition.app.HoursStatus
 import com.juxtaposition.app.Place
+import com.juxtaposition.app.PlaceLinks
 import com.juxtaposition.app.ViewMode
 import com.juxtaposition.app.hoursStatus
 
@@ -316,7 +318,7 @@ private fun StatusText(p: Place) {
 
 @Composable
 private fun Avatar(place: Place, size: Int) {
-    Box(Modifier.size(size.dp).clip(CircleShape).background(typeColor(place.type).copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(size.dp).clip(CircleShape).background(typeColor(place.type).copy(alpha = 0.16f)).clearAndSetSemantics { }, contentAlignment = Alignment.Center) {
         Text(place.emoji(), fontSize = (size * 0.46f).sp)
     }
 }
@@ -369,7 +371,7 @@ private fun PlaceSheet(p: Place, onClose: () -> Unit) {
             p.openingHours?.let { InfoRow(Icons.Default.Schedule, it) }
             Row(Modifier.padding(top = 12.dp, end = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
-                    onClick = { open(ctx, Uri.parse("geo:${p.lat},${p.lng}?q=${p.lat},${p.lng}(${Uri.encode(p.name)})"), Intent.ACTION_VIEW) },
+                    onClick = { openDirections(ctx, p) },
                     Modifier.weight(1f).height(48.dp),
                 ) { Icon(Icons.Default.Directions, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Directions") }
                 p.phone?.let {
@@ -377,6 +379,13 @@ private fun PlaceSheet(p: Place, onClose: () -> Unit) {
                 }
                 p.website?.let {
                     FilledTonalIconButton(onClick = { open(ctx, Uri.parse(if (it.startsWith("http")) it else "https://$it"), Intent.ACTION_VIEW) }, Modifier.size(48.dp)) { Icon(Icons.Default.Language, "Website") }
+                }
+                FilledTonalIconButton(onClick = { share(ctx, p) }, Modifier.size(48.dp)) { Icon(Icons.Default.Share, "Share this place") }
+            }
+            PlaceLinks.osmEdit(p)?.let { url ->
+                TextButton(onClick = { open(ctx, Uri.parse(url), Intent.ACTION_VIEW) }, Modifier.padding(top = 2.dp)) {
+                    Icon(Icons.Default.Edit, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
+                    Text("Missing info? Add it on OpenStreetMap", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -437,6 +446,22 @@ private fun EmptyState() {
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+/** Walking navigation in Google Maps if present, else any map app's pin, else the browser. */
+private fun openDirections(ctx: Context, p: Place) {
+    for (url in listOf(PlaceLinks.walkingNavigation(p), PlaceLinks.mapPin(p), PlaceLinks.mapsWebDirections(p))) {
+        if (runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
+    }
+}
+
+private fun share(ctx: Context, p: Place) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, p.name)
+        putExtra(Intent.EXTRA_TEXT, PlaceLinks.shareText(p))
+    }
+    runCatching { ctx.startActivity(Intent.createChooser(send, "Share place").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }
 
 private fun open(ctx: Context, uri: Uri, action: String) {

@@ -1,7 +1,13 @@
 package com.juxtaposition.app.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.LocalContext
+import com.juxtaposition.app.BuildConfig
+import com.juxtaposition.app.UpdateInfo
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MyLocation
@@ -37,6 +43,14 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
                 searchActive = searchOpen || vm.query.isNotEmpty(),
                 onSearch = { searchOpen = !searchOpen; if (!searchOpen) vm.updateQuery("") },
             )
+            vm.update?.let { info ->
+                val ctx = LocalContext.current
+                UpdateBanner(
+                    info,
+                    onDownload = { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } },
+                    onLater = vm::dismissUpdate,
+                )
+            }
             vm.notice?.let { msg ->
                 Text(
                     msg, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
@@ -70,7 +84,10 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
         }
     }
 
-    if (showSettings) SettingsDialog(vm.apiUrl, onDismiss = { showSettings = false }) { vm.saveApiUrl(it); showSettings = false }
+    if (showSettings) SettingsDialog(
+        current = vm.apiUrl, updateMessage = vm.updateMessage, onCheckUpdates = { vm.checkForUpdates(manual = true) },
+        onDismiss = { showSettings = false; vm.clearUpdateMessage() },
+    ) { vm.saveApiUrl(it); showSettings = false; vm.clearUpdateMessage() }
 }
 
 @Composable
@@ -93,7 +110,7 @@ internal fun Header(
 }
 
 @Composable
-private fun SettingsDialog(current: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+private fun SettingsDialog(current: String, updateMessage: String?, onCheckUpdates: () -> Unit, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     var text by remember { mutableStateOf(current) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -103,9 +120,31 @@ private fun SettingsDialog(current: String, onDismiss: () -> Unit, onSave: (Stri
                 Text("Your Nearby Eats API (the Render service URL).", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(text, { text = it }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small)
+                Spacer(Modifier.height(16.dp))
+                Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.labelLarge)
+                TextButton(onClick = onCheckUpdates, contentPadding = PaddingValues(horizontal = 0.dp)) { Text("Check for updates") }
+                updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         },
         confirmButton = { TextButton(onClick = { onSave(text) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+@Composable
+internal fun UpdateBanner(info: UpdateInfo, onDownload: () -> Unit, onLater: () -> Unit) {
+    androidx.compose.material3.Surface(
+        color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Update available", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text("Version ${info.version} is ready to download.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+            TextButton(onClick = onLater) { Text("Later") }
+            Button(onClick = onDownload) { Text("Download") }
+            Spacer(Modifier.width(4.dp))
+        }
+    }
 }
