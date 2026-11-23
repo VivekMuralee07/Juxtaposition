@@ -12,7 +12,8 @@ render.yaml  Render blueprint (starter plan)
 ## How it works
 1. The app asks for location permission and reads your position.
 2. It asks **OpenStreetMap** (Overpass API; free, no key) in two ways at once, and the first good answer wins: directly from the phone (its own connection is rarely throttled), and via `GET /api/nearby?lat=&lng=&radius=` on your server (which caches for 5 minutes and is shared by all your users). Several OpenStreetMap mirrors are tried with staggered starts.
-3. Distance (straight-line) and compass bearing are computed per place; results are sorted by distance.
+3. Wide searches load in steps (1 km, then 2 km, then the full radius): the nearest places appear straight away and each wider step swaps in when it arrives. If a wider step fails, the closer results stay on screen with a note instead of an error.
+   Distance (straight-line) and compass bearing are computed per place; results are sorted by distance.
    The phone saves the last good list for each area, so if both routes fail it shows the saved copy with a notice instead of nothing.
 4. The app plots them: you at the centre, distance rings around you, N marker; places closed right now are faded.
 5. Open/closed status is worked out on the phone from OpenStreetMap's `opening_hours` tag (common formats like `Mo-Sa 11:00-23:00; Su off`, overnight hours and 24/7). Public holidays are ignored, anything more exotic shows no status, and many places have no hours at all, so treat it as a guide.

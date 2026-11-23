@@ -121,26 +121,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val radius = radiusM
         val mySeq = ++loadSeq
         viewModelScope.launch {
-            loading = true; error = null
-            val (fresh, problems) = fetchFirst(lat, lng, radius)
-            if (mySeq != loadSeq) return@launch // a newer request has started; ignore this one
-            val key = cache.key(lat, lng, radius)
-            when {
-                fresh != null -> { places = fresh.places; selected = null; notice = null; cache.save(key, fresh) }
-                else -> {
-                    val saved = cache.load(key)
-                    if (saved != null) {
-                        places = saved.result.places; selected = null
-                        notice = "Live data unavailable. Showing results saved ${agoText(System.currentTimeMillis() - saved.savedAt)}."
-                    } else {
-                        notice = null
-                        error = "Couldn't load restaurants. " + problems.joinToString(" • ")
+            loading = true; error = null; notice = null
+            val outcome = ProgressiveLoad.run(
+                radius,
+                fetch = { r -> fetchFirst(lat, lng, r) },
+                onStep = { r, res, isFinal ->
+                    if (mySeq == loadSeq) {
+                        places = res.places
+                        selected = selected?.let { s -> res.places.firstOrNull { it.id == s.id } }
+                        cache.save(cache.key(lat, lng, r), res)
+                        notice = if (isFinal) null else "Showing the nearest ${km(r)} while the wider area loads…"
                     }
+                },
+            )
+            if (mySeq != loadSeq) return@launch // a newer request has started; ignore this one
+            if (!outcome.complete(radius)) {
+                val reached = outcome.reachedRadiusM
+                // best saved copy of the full radius (or the largest smaller one) from an earlier visit
+                val saved = ProgressiveLoad.steps(radius).reversed().firstNotNullOfOrNull { cache.load(cache.key(lat, lng, it)) }
+                val why = outcome.problems.firstOrNull()?.take(140).orEmpty()
+                when {
+                    reached != null && (saved == null || saved.result.radiusM <= reached) ->
+                        notice = "Showing the nearest ${km(reached)}. The wider area couldn't load ($why). Tap the location button to retry."
+                    saved != null -> {
+                        places = saved.result.places; selected = null
+                        notice = "Live data unavailable. Showing results saved ${agoText(System.currentTimeMillis() - saved.savedAt)} (${km(saved.result.radiusM)})."
+                    }
+                    else -> error = "Couldn't load restaurants. " + outcome.problems.joinToString(" • ")
                 }
             }
             loading = false
         }
     }
+
+    private fun km(m: Int) = if (m < 1000) "$m m" else (m / 1000.0).let { if (it == Math.floor(it)) "%.0f km".format(it) else "%.1f km".format(it) }
 
     private fun friendly(t: Throwable) = when (t) {
         is ApiException -> t.message ?: "Server error"

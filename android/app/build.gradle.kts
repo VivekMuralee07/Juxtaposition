@@ -12,8 +12,8 @@ android {
         applicationId = "com.juxtaposition.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.5.0"
+        versionCode = 8
+        versionName = "1.5.1"
         val apiUrl = (project.findProperty("apiUrl") as String?) ?: "https://juxtaposition-api.onrender.com"
         buildConfigField("String", "DEFAULT_API_URL", "\"$apiUrl\"")
     }
