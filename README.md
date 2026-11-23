@@ -1,6 +1,6 @@
 # Nearby Eats (Juxtaposition)
 
-Shows the restaurants, fast-food places and cafes around your **current location**, with the **distance and direction** to each, as a **list** or a **radar map**, with whether each place is **open right now** (and when it closes or next opens). Search by name or cuisine, filter by open now / veg / type, and tap a place for details, directions, call and website.
+Shows the restaurants, fast-food places and cafes around your **current location**, with the **distance and direction** to each, as a **list** or a **radar map**, with whether each place is **open right now** (and when it closes or next opens). The list is grouped into 500 m bands (Within 500 m, 500 m – 1 km, 1 – 1.5 km, … up to 5 km). Search by name or cuisine, filter by open now / veg / type ("Open now" hides only places known to be closed; places with no hours listed stay, labelled "Hours not listed"), and tap a place for details, directions, call and website.
 
 ```
 android/   Kotlin + Jetpack Compose app  (-> APK)
