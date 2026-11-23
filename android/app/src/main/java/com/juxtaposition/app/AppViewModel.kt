@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -21,6 +22,8 @@ enum class ViewMode { LIST, RADAR }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private val cache = PlacesCache(app.getSharedPreferences("places_cache", Context.MODE_PRIVATE))
+    private var loadSeq = 0
 
     var apiUrl by mutableStateOf(prefs.getString("apiUrl", BuildConfig.DEFAULT_API_URL)!!); private set
     var origin by mutableStateOf<Pair<Double, Double>?>(null); private set
@@ -35,6 +38,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var loading by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     var locationDenied by mutableStateOf(false); private set
+    /** Shown when the list comes from the phone's saved copy because live data was unavailable. */
+    var notice by mutableStateOf<String?>(null); private set
 
     /** Places after the type / search / open-now / veg filters. */
     val visiblePlaces: List<Place>
@@ -92,13 +97,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         load()
     }
 
+    /**
+     * Asks OpenStreetMap straight from the phone AND your server at the same time; the first good answer wins.
+     * (Shared cloud servers are often throttled by the public OpenStreetMap servers; a phone usually is not.)
+     */
+    private suspend fun fetchFirst(lat: Double, lng: Double, radius: Int): Pair<NearbyResult?, List<String>> {
+        val ch = Channel<Pair<String, Result<NearbyResult>>>(Channel.UNLIMITED)
+        val jobs = listOf(
+            viewModelScope.launch { ch.send("OpenStreetMap" to runCatching { OverpassClient.nearby(lat, lng, radius) }) },
+            viewModelScope.launch { ch.send("server" to runCatching { withContext(Dispatchers.IO) { ApiClient(apiUrl).nearby(lat, lng, radius) } }) },
+        )
+        val problems = mutableListOf<String>()
+        repeat(2) {
+            val (source, result) = ch.receive()
+            result.onSuccess { value -> jobs.forEach { j -> j.cancel() }; return value to emptyList() }
+            result.onFailure { e -> problems += "$source: ${friendly(e)}" }
+        }
+        return null to problems
+    }
+
     fun load() {
         val (lat, lng) = origin ?: return
+        val radius = radiusM
+        val mySeq = ++loadSeq
         viewModelScope.launch {
             loading = true; error = null
-            runCatching { withContext(Dispatchers.IO) { ApiClient(apiUrl).nearby(lat, lng, radiusM) } }
-                .onSuccess { places = it.places; selected = null }
-                .onFailure { error = friendly(it) }
+            val (fresh, problems) = fetchFirst(lat, lng, radius)
+            if (mySeq != loadSeq) return@launch // a newer request has started; ignore this one
+            val key = cache.key(lat, lng, radius)
+            when {
+                fresh != null -> { places = fresh.places; selected = null; notice = null; cache.save(key, fresh) }
+                else -> {
+                    val saved = cache.load(key)
+                    if (saved != null) {
+                        places = saved.result.places; selected = null
+                        notice = "Live data unavailable. Showing results saved ${agoText(System.currentTimeMillis() - saved.savedAt)}."
+                    } else {
+                        notice = null
+                        error = "Couldn't load restaurants. " + problems.joinToString(" • ")
+                    }
+                }
+            }
             loading = false
         }
     }

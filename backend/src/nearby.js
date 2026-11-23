@@ -3,7 +3,7 @@
 const { distanceKm } = require('./geo');
 
 const ENDPOINTS = (process.env.OVERPASS_URLS ||
-  'https://overpass-api.de/api/interpreter,https://overpass.kumi.systems/api/interpreter,https://overpass.private.coffee/api/interpreter').split(',');
+  'https://overpass-api.de/api/interpreter,https://overpass.kumi.systems/api/interpreter,https://overpass.private.coffee/api/interpreter,https://overpass.openstreetmap.fr/api/interpreter').split(',');
 const STALE_OK_MS = 6 * 60 * 60_000; // if every mirror fails, serve a previous answer for the same area up to this old
 const USER_AGENT = 'Juxtaposition-NearbyRestaurants/1.0 (self-hosted)';
 const TYPES = { restaurant: 'restaurant', fast_food: 'fast_food', cafe: 'cafe' };
@@ -167,4 +167,22 @@ async function nearby(params, { fetchImpl = globalThis.fetch, now = Date.now } =
   return { origin, radiusM, source: 'OpenStreetMap', stale, places: normalise(places, origin) };
 }
 
-module.exports = { nearby, normalise, bearingDeg, compass, buildQuery, BadRequest, UpstreamError, _cache: cache };
+/** Connectivity check from THIS server to every Overpass mirror (tiny query, one try each). */
+async function diagnose({ fetchImpl = globalThis.fetch, timeoutMs = 10_000 } = {}) {
+  const query = '[out:json][timeout:8];node(1);out ids;';
+  return Promise.all(ENDPOINTS.map(async (url) => {
+    const t0 = Date.now();
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(new Error('timeout')), timeoutMs);
+    try {
+      const json = await attempt(url, query, fetchImpl, ctl.signal);
+      return { host: hostOf(url), ok: true, ms: Date.now() - t0, elements: (json.elements || []).length };
+    } catch (e) {
+      return { host: hostOf(url), ok: false, ms: Date.now() - t0, error: describe(e) };
+    } finally {
+      clearTimeout(timer);
+    }
+  }));
+}
+
+module.exports = { diagnose, nearby, normalise, bearingDeg, compass, buildQuery, BadRequest, UpstreamError, _cache: cache };

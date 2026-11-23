@@ -11,8 +11,9 @@ render.yaml  Render blueprint (starter plan)
 
 ## How it works
 1. The app asks for location permission and reads your position.
-2. It calls `GET /api/nearby?lat=&lng=&radius=` on your server.
-3. The server queries **OpenStreetMap** (Overpass API; free, no key), computes distance (straight-line) and compass bearing for each place, caches results for 5 minutes, and returns them sorted by distance.
+2. It asks **OpenStreetMap** (Overpass API; free, no key) in two ways at once, and the first good answer wins: directly from the phone (its own connection is rarely throttled), and via `GET /api/nearby?lat=&lng=&radius=` on your server (which caches for 5 minutes and is shared by all your users). Several OpenStreetMap mirrors are tried with staggered starts.
+3. Distance (straight-line) and compass bearing are computed per place; results are sorted by distance.
+   The phone saves the last good list for each area, so if both routes fail it shows the saved copy with a notice instead of nothing.
 4. The app plots them: you at the centre, distance rings around you, N marker; places closed right now are faded.
 5. Open/closed status is worked out on the phone from OpenStreetMap's `opening_hours` tag (common formats like `Mo-Sa 11:00-23:00; Su off`, overnight hours and 24/7). Public holidays are ignored, anything more exotic shows no status, and many places have no hours at all, so treat it as a guide.
 
@@ -21,7 +22,8 @@ render.yaml  Render blueprint (starter plan)
 ## API
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/health` | liveness |
+| GET | `/health` | liveness; includes the deployed commit (`commit`) |
+| GET | `/api/diag` | tests whether this server can reach each OpenStreetMap mirror (open in a browser to debug "data source is busy") |
 | GET | `/api/nearby` | `lat`, `lng` (required), `radius` metres 200-5000 (default 1500), `types` = `restaurant,fast_food,cafe` |
 
 ## Deploy the backend on Render (starter plan)
@@ -67,7 +69,8 @@ Local dev: `cd backend && npm i && npm start` (port 3000); in the emulator use `
 ## API
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/health` | liveness |
+| GET | `/health` | liveness; includes the deployed commit (`commit`) |
+| GET | `/api/diag` | tests whether this server can reach each OpenStreetMap mirror (open in a browser to debug "data source is busy") |
 | GET | `/api/restaurants?q=&lat=&lng=` | sorted by distance |
 | GET | `/api/restaurants/:id/menu` | |
 | POST | `/api/compare` | `{restaurantId, items:[{menuItemId, qty}], lat?, lng?}` |
