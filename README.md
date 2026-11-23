@@ -1,108 +1,53 @@
-# Nearby Eats (Juxtaposition)
+# Nearby Eats
 
-Shows the restaurants, fast-food places and cafes around your **current location**, with the **distance and direction** to each, as a **list** or a **radar map**, with whether each place is **open right now** (and when it closes or next opens). The list is grouped into 500 m bands (Within 500 m, 500 m – 1 km). Search by name or cuisine, filter by open now / veg / type ("Open now" hides only places known to be closed; places with no hours listed stay, labelled "Hours not listed"), and tap a place for details, directions, call and website.
+Shows the restaurants, fast-food places and cafes around your **current location**, with the **distance and direction** to each, as a **list** (grouped into 500 m bands) or a **radar** that can point the way you are facing. It follows you as you walk, tells you what is **open now**, and lets you filter and search.
 
 ```
 android/   Kotlin + Jetpack Compose app  (-> APK)
-backend/   Node/Express API              (-> Render)
-dist/      Prebuilt APK (Juxtaposition-1.0.0.apk, v1.1.0, Android 8+)
-render.yaml  Render blueprint (starter plan)
+backend/   Node/Express API              (-> Render; optional backup route + diagnostics)
+dist/      NearbyEats.apk (signed release build, Android 8+)
+render.yaml  Render blueprint
 ```
 
-## How it works
-1. The app asks for location permission and reads your position.
-2. It asks **OpenStreetMap** (Overpass API; free, no key) in two ways at once, and the first good answer wins: directly from the phone (its own connection is rarely throttled), and via `GET /api/nearby?lat=&lng=&radius=` on your server (which caches for 5 minutes and is shared by all your users). Several OpenStreetMap mirrors are tried with staggered starts.
-3. One list is fetched for a 1 km circle around you. The **500 m / 1 km** chips, type, search, open-now and veg are filters over that list on the phone, so changing them never reloads or empties the screen.
-4. **It follows you**: while the app is open, distances and directions re-measure live as you walk, and after about 200 m of movement the list refreshes quietly in the background (the current list stays on screen; a failed refresh only shows a note). Rough location fixes (worse than 150 m) are ignored, and GPS updates stop when the app is closed or in the background.
-   Distance (straight-line) and compass bearing are computed per place; results are sorted by distance.
-   The phone saves the last good list for each area, so if both routes fail it shows the saved copy with a notice instead of nothing.
-5. The app plots them: you at the centre, distance rings around you, N marker; places closed right now are faded.
-6. Open/closed status is worked out on the phone from OpenStreetMap's `opening_hours` tag (common formats like `Mo-Sa 11:00-23:00; Su off`, overnight hours and 24/7). Public holidays are ignored, anything more exotic shows no status, and many places have no hours at all, so treat it as a guide.
+## What it does
+- **500 m / 1 km** chips, **type** (restaurant / fast food / cafe), **Open now**, **Veg**, and **search** by name or cuisine. All of these filter one list on the phone, so they are instant and never empty the screen.
+- **Open now** hides only places known to be closed. Most OpenStreetMap places list no opening hours; those stay and are labelled "Hours not listed".
+- **Radar**: you are at the centre with distance rings. **Heading up** (default) rotates the view so the top is where you face (uses the compass; a beam shows your facing). Tap the compass button for **North up**. Closed places are faded. Phones without a compass use North up automatically. The app is portrait-only.
+- **Follows you**: distances and directions re-measure live as you walk; after about 200 m the list refreshes quietly in the background (the current list stays; a failed refresh only shows a note). GPS and compass run only while the app is on screen.
+- Tap a place for details: distance, direction, walking time, address, hours, and Directions / Call / Website buttons.
+- A **data line** at the bottom says where the list came from (an OpenStreetMap server via the phone, or your server, or a saved copy), how long it took, how fresh it is, and the GPS accuracy.
 
-**Data caveats:** OpenStreetMap is community-maintained, so coverage is good in big cities and patchier elsewhere, and it has **no ratings or menu prices**. Distances are straight-line (the detail card shows an approximate walking time). Map data (c) OpenStreetMap contributors. The public Overpass servers have fair-use limits; the server caches and identifies itself, but for heavy use run your own Overpass instance (`OVERPASS_URLS`).
+## How the data is loaded
+1. One list is fetched for a 1 km circle around you from **OpenStreetMap** (Overpass API; free, no key), in two ways at once; the first good answer wins: **directly from the phone** (its own connection is rarely throttled) and via **your server** (`/api/nearby`, which caches for 5 minutes). Several Overpass mirrors are tried with staggered starts; an overloaded mirror's "empty list + remark" reply counts as a failure, never as "no places".
+2. The phone saves the last good list per area. If both routes fail it shows the saved copy with a notice instead of nothing.
+3. Distances (straight-line), bearings and open/closed status are computed on the phone. Open/closed is read from OpenStreetMap's `opening_hours` tag (common formats such as `Mo-Sa 11:00-15:00,18:00-23:00; Su off`, overnight hours and 24/7; public holidays are ignored; anything fancier shows no status).
 
-## API
+**Data caveats:** OpenStreetMap is community-maintained: good coverage in big cities, patchier elsewhere, **no ratings or menu prices**. Hours may be out of date. Map data (c) OpenStreetMap contributors. The public Overpass servers have fair-use limits.
+
+## Install
+Download `dist/NearbyEats.apk` (https://github.com/VivekMuralee07/Juxtaposition/raw/main/dist/NearbyEats.apk), allow "install unknown apps", and open it. Once signing secrets are set (below), every merge to `main` also publishes a signed APK under **Releases** (`.../releases/latest/download/NearbyEats.apk`).
+
+## Signing (important)
+Android only updates an installed app if the new APK is signed with the **same key**. Releases are signed with a private release key that is **not in this repo**.
+- Keep the keystore file and its password safe (back them up somewhere private). If they are lost you cannot update installed copies, and the Play Store would not accept a replacement.
+- `android/release-cert.sha256` holds the key's public fingerprint. CI fails if `dist/NearbyEats.apk` (or the CI-built APK, when signing secrets are set) is signed with a different key.
+- Build locally with the key: `KEYSTORE_PATH=/path/release.jks KEYSTORE_PASSWORD=... KEY_ALIAS=nearbyeats ./gradlew assembleRelease`. Without `KEYSTORE_PATH` the build is debug-signed and prints a warning; never distribute that.
+- GitHub Actions: add repository secrets `KEYSTORE_BASE64` (the keystore, base64-encoded), `KEYSTORE_PASSWORD` and `KEY_ALIAS` (`nearbyeats`). CI then builds a signed APK, uploads it as an artifact, and on `main` publishes a release `v<versionName>` (bump `versionName`/`versionCode` in `android/app/build.gradle.kts` for each release).
+
+## Backend (optional) on Render
+The app works without it (the phone asks OpenStreetMap itself); the server is a shared cache and a backup route. Render dashboard -> **New + -> Blueprint** -> select this repo (Root Directory `backend`, Build `npm ci`, Start `npm start`). Then in the app: **Settings (gear) -> Server URL** -> `https://<service>.onrender.com`.
+
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/health` | liveness; includes the deployed commit (`commit`) |
-| GET | `/api/diag` | tests whether this server can reach each OpenStreetMap mirror (open in a browser to debug "data source is busy") |
+| GET | `/health` | liveness; includes the deployed commit |
 | GET | `/api/nearby` | `lat`, `lng` (required), `radius` metres 200-5000 (default 1500), `types` = `restaurant,fast_food,cafe` |
+| GET | `/api/diag` | tests whether this server can reach each OpenStreetMap mirror (open in a browser to debug "data source is busy") |
 
-## Deploy the backend on Render (starter plan)
-Render dashboard -> **New + -> Blueprint** -> select this repo (Root Directory `backend`, Build `npm ci`, Start `npm start`). Then in the app: **Settings (gear) -> Server URL** -> your `https://<service>.onrender.com`. Check `<url>/health` first.
+Local dev: `cd backend && npm i && npm start`; in the emulator use `http://10.0.2.2:3000` as the Server URL.
 
-Local dev: `cd backend && npm i && npm start`; in the emulator use `http://10.0.2.2:3000`.
-
-## Build the APK
+## Build and test
 JDK 17+, Android SDK (platform 34, build-tools 34.0.0):
 ```
 cd android && ./gradlew testDebugUnitTest assembleRelease   # -> app/build/outputs/apk/release/app-release.apk
+cd backend && npm test
 ```
-Signed with the debug key for sideloading; use your own keystore for the Play Store.
-
-## Tests
-`cd backend && npm test` and `cd android && ./gradlew testDebugUnitTest`.
-
----
-## Earlier feature: price comparison (still in the backend, not used by the app)
-### How it worked
-1. Pick a restaurant (search by name/cuisine; optionally use your GPS location).
-2. Pick the meal (items + quantities).
-3. The app calls `POST /api/compare`; the backend asks every provider for a quote and returns, per app: item prices, delivery fee, platform fee, taxes, coupon discount, **total**, **ETA**, and badges (Cheapest / Fastest / Best value).
-4. "Open app" launches the delivery app (or its Play Store page) to order.
-
-ETA = restaurant prep time + courier hand-off + distance / courier speed. Best value = cheapest, unless a much faster app costs <= Rs.20 more.
-
-## Important: data source
-**Swiggy and Zomato have no public consumer price API, and scraping their apps breaches their terms**, so this repo does not do that. Out of the box the backend runs in `PROVIDER_MODE=simulated`: a deterministic demo catalogue (Bengaluru) with realistic fee/markup/ETA logic. The app shows a "Demo mode" notice in that case.
-
-Real prices come from **ONDC** (open network) via the integration below (`PROVIDER_MODE=hybrid`); Swiggy and Zomato quotes stay simulated "Estimate"s unless you have a partner API agreement (add one as another provider in `providers/index.js`).
-
-## Deploy the backend on Render (starter plan)
-1. Render dashboard -> **New + -> Blueprint** -> select this repo. `render.yaml` creates the `juxtaposition-api` web service (plan: starter, root dir `backend`).
-2. After deploy, open `https://<your-service>.onrender.com/health` -> `{"ok":true,...}`.
-3. Point the app at it, either:
-   - in the app: **Settings (gear) -> Server URL**, or
-   - at build time: `cd android && ./gradlew assembleRelease -PapiUrl=https://<your-service>.onrender.com`
-   - or set the GitHub repo variable `API_URL` so CI builds an APK with it baked in.
-
-Local dev: `cd backend && npm i && npm start` (port 3000); in the emulator use `http://10.0.2.2:3000` as the Server URL.
-
-## API
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/health` | liveness; includes the deployed commit (`commit`) |
-| GET | `/api/diag` | tests whether this server can reach each OpenStreetMap mirror (open in a browser to debug "data source is busy") |
-| GET | `/api/restaurants?q=&lat=&lng=` | sorted by distance |
-| GET | `/api/restaurants/:id/menu` | |
-| POST | `/api/compare` | `{restaurantId, items:[{menuItemId, qty}], lat?, lng?}` |
-
-## Build the APK
-Needs JDK 17+ and the Android SDK (platform 34, build-tools 34.0.0).
-```
-cd android
-./gradlew testDebugUnitTest assembleRelease
-# -> app/build/outputs/apk/release/app-release.apk
-```
-The release APK is signed with the debug key so it can be sideloaded (enable "install unknown apps"). For Play Store, add your own keystore in `app/build.gradle.kts`.
-
-## Tests
-`cd backend && npm test` (pricing/ETA logic) and `cd android && ./gradlew testDebugUnitTest` (response parsing).
-
-## Catalogue
-The demo catalogue has the local Bengaluru restaurants plus 16 national chains (Domino's, McDonald's, KFC, Behrouz, Starbucks, ...) with 3 outlets each in Bengaluru, Mumbai, Delhi, Hyderabad, Chennai, Pune and Kolkata. Search shows restaurants within 20 km of you; outside those cities the app falls back to Bengaluru.
-
-This is illustrative data, not Swiggy/Zomato's real listings. To use your own, set `CATALOG_FILE=/path/to/restaurants.json` (array of objects shaped like those in `backend/src/data.js`).
-
-## ONDC integration (real prices)
-`PROVIDER_MODE=hybrid` makes the **ONDC** quote real; Swiggy/Zomato/Magicpin stay estimates. In the app each card is tagged **Live ONDC price** or **Estimate**.
-
-How a quote is produced (`backend/src/ondc/`, `providers/ondc.js`): signed Beckn `/search` to the ONDC gateway (restaurant name + your area) -> sellers reply asynchronously to our `/on_search` -> we fuzzy-match the restaurant (same brand within 3 km) and your items -> signed `/select` to that seller -> `/on_select` returns the real quote (item prices, delivery, packing, taxes, discounts, total, delivery TAT). If ONDC times out or errors, that card falls back to an Estimate. Callbacks are signature-verified against the ONDC registry; forged ones get 401.
-
-**You must register as an ONDC buyer app first - credentials can't be generated for you.**
-1. `cd backend && node scripts/gen-ondc-keys.js` -> keep the private keys secret, give ONDC the public keys.
-2. Register as a *buyer app* (domain `ONDC:RET11`, food & beverage) with ONDC, starting in **staging**, then pre-prod, then prod. ONDC onboarding normally needs a registered business and a domain you control for the subscriber id (a custom domain on your Render service); confirm current requirements with ONDC.
-3. Set the env vars in `render.yaml` on Render (`ONDC_SUBSCRIBER_ID`, `ONDC_UK_ID`, `ONDC_SIGNING_PRIVATE_KEY`, `ONDC_ENCRYPTION_PRIVATE_KEY`, `ONDC_REGISTRY_ENC_PUBLIC_KEY`, `ONDC_REQUEST_ID`) and `PROVIDER_MODE=hybrid`. The service exposes `/ondc-site-verification.html`, `/on_subscribe`, `/on_search`, `/on_select`.
-4. Gateway/registry URLs default per `ONDC_ENV` (`src/ondc/config.js`); verify them against ONDC's current participant docs and override with `ONDC_GATEWAY_URL` / `ONDC_REGISTRY_URL` if needed.
-
-Known limits: delivery pincode is approximated from the nearest supported city centre (no reverse geocoding yet); only restaurants already in the catalogue are priced on ONDC (listing ONDC-only restaurants is a next step); the protocol code is tested against a mock network, not yet against live ONDC.

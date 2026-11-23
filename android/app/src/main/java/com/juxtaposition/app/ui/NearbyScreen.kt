@@ -57,7 +57,8 @@ private val TYPES = listOf<Pair<String?, String>>(null to "All", "restaurant" to
 fun NearbyScreen(vm: AppViewModel) {
     NearbyContent(
         places = vm.visiblePlaces, selected = vm.selected, radiusM = vm.radiusM, typeFilter = vm.typeFilter,
-        viewMode = vm.viewMode, loading = vm.loading && !vm.hasData, openNow = vm.openNow, vegOnly = vm.vegOnly,
+        viewMode = vm.viewMode, loading = vm.loading && !vm.hasData, openNow = vm.openNow, vegOnly = vm.vegOnly, dataLine = vm.dataLine(),
+        compass = CompassUi(vm.headingDeg, vm.headingUp, vm.compassAvailable, vm.compassLow), onToggleHeading = vm::toggleHeadingUp,
         onRadius = vm::setRadius, onType = vm::updateTypeFilter, onMode = vm::updateViewMode, onSelect = vm::select,
         onOpenNow = vm::updateOpenNow, onVegOnly = vm::updateVegOnly,
     )
@@ -71,7 +72,8 @@ fun NearbyContent(
     openNow: Boolean, vegOnly: Boolean,
     onRadius: (Int) -> Unit, onType: (String?) -> Unit, onMode: (ViewMode) -> Unit, onSelect: (Place?) -> Unit,
     onOpenNow: (Boolean) -> Unit, onVegOnly: (Boolean) -> Unit,
-    animateRadar: Boolean = true,
+    animateRadar: Boolean = true, dataLine: String? = null,
+    compass: CompassUi = CompassUi(), onToggleHeading: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize()) {
         // view switcher
@@ -118,7 +120,7 @@ fun NearbyContent(
                 loading && places.isEmpty() -> SkeletonList()
                 places.isEmpty() -> EmptyState()
                 viewMode == ViewMode.LIST -> PlaceList(places, selected, onSelect)
-                else -> RadarCard(places, selected, radiusM, onSelect, animateRadar)
+                else -> RadarCard(places, selected, radiusM, onSelect, animateRadar, compass, onToggleHeading)
             }
         }
 
@@ -127,11 +129,15 @@ fun NearbyContent(
             enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
         ) { selected?.let { PlaceSheet(it, onClose = { onSelect(null) }) } }
         if (selected == null) {
-            Text(
-                "Map data © OpenStreetMap contributors • straight-line distances",
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            )
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                dataLine?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    "Map data © OpenStreetMap contributors • straight-line distances",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                )
+            }
         }
     }
 }
@@ -152,16 +158,45 @@ private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
     )
 }
 
+/** Compass state for the radar. `headingUp` is the user's choice; it only takes effect when the sensor exists. */
+data class CompassUi(val headingDeg: Float? = null, val headingUp: Boolean = false, val available: Boolean = true, val lowAccuracy: Boolean = false)
+
 @Composable
-private fun RadarCard(places: List<Place>, selected: Place?, radiusM: Int, onSelect: (Place?) -> Unit, animate: Boolean) {
+private fun RadarCard(
+    places: List<Place>, selected: Place?, radiusM: Int, onSelect: (Place?) -> Unit, animate: Boolean,
+    compass: CompassUi, onToggleHeading: () -> Unit,
+) {
+    val headingUp = compass.headingUp && compass.available
+    val facing = if (headingUp) compass.headingDeg else null
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Box(Modifier.weight(1f).fillMaxWidth().clip(MaterialTheme.shapes.large)) {
-            RadarView(places, selected, radiusM, onSelect, Modifier.fillMaxSize(), animate)
-            Text(
-                "Tap a dot for details • faded = closed now",
-                Modifier.align(Alignment.TopStart).padding(start = 14.dp, top = 12.dp),
-                color = Color(0xFF8394AA), style = MaterialTheme.typography.labelSmall,
+            RadarView(
+                places, selected, radiusM, onSelect, Modifier.fillMaxSize(), animate,
+                facingDeg = facing, showFacingCone = compass.headingDeg.takeIf { compass.available && it != null },
             )
+            Column(Modifier.align(Alignment.TopStart).padding(start = 14.dp, top = 12.dp).fillMaxWidth(0.72f)) {
+                Text(
+                    when {
+                        !compass.available -> "North up • this phone has no compass sensor"
+                        headingUp && compass.headingDeg == null -> "Heading up • waiting for the compass…"
+                        headingUp -> "Heading up • top = the way you face"
+                        else -> "North up"
+                    },
+                    color = Color(0xFFB7C4D6), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
+                )
+                if (headingUp && compass.lowAccuracy) {
+                    Text("Compass needs calibrating: wave the phone in a figure 8", color = Color(0xFFFFC27A), style = MaterialTheme.typography.labelSmall)
+                }
+                Text("Tap a dot for details • faded = closed now", color = Color(0xFF8394AA), style = MaterialTheme.typography.labelSmall)
+            }
+            if (compass.available) {
+                FilledTonalIconButton(
+                    onClick = onToggleHeading, Modifier.align(Alignment.TopEnd).padding(8.dp).size(40.dp),
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = Color(0xFF2B394A), contentColor = if (headingUp) Color(0xFFFF8A4C) else Color(0xFFB7C4D6)),
+                ) {
+                    Icon(if (headingUp) Icons.Default.Navigation else Icons.Default.Explore, if (headingUp) "Switch to north up" else "Switch to heading up")
+                }
+            }
         }
         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             listOf("restaurant" to "Restaurant", "fast_food" to "Fast food", "cafe" to "Cafe").forEach { (t, l) ->

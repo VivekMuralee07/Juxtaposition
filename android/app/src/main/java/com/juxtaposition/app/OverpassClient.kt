@@ -46,7 +46,7 @@ object OverpassClient {
         post: suspend (String, String, Int) -> String = ::httpPost,
     ): NearbyResult {
         val query = buildQuery(lat, lng, radiusM)
-        val body = firstSuccess(mirrors, hedgeMs) { url ->
+        val (winner, body) = firstSuccess(mirrors, hedgeMs) { url ->
             val text = post(url, query, timeoutMs)
             val remark = runCatching { JSONObject(text).optString("remark") }.getOrDefault("")
             val empty = runCatching { JSONObject(text).optJSONArray("elements")?.length() ?: 0 }.getOrDefault(0) == 0
@@ -56,11 +56,11 @@ object OverpassClient {
             }
             text
         }
-        return parse(body, lat, lng, radiusM)
+        return parse(body, lat, lng, radiusM).copy(via = URL(winner).host)
     }
 
     /** Mirror i starts after i * hedgeMs. The first success wins and cancels the rest; if all fail, the error names each. */
-    internal suspend fun <T> firstSuccess(mirrors: List<String>, hedgeMs: Long, attempt: suspend (String) -> T): T = coroutineScope {
+    internal suspend fun <T> firstSuccess(mirrors: List<String>, hedgeMs: Long, attempt: suspend (String) -> T): Pair<String, T> = coroutineScope {
         val results = Channel<Pair<String, Result<T>>>(Channel.UNLIMITED)
         val jobs = mirrors.mapIndexed { i, url ->
             launch {
@@ -72,7 +72,7 @@ object OverpassClient {
         val errors = mutableListOf<String>()
         repeat(mirrors.size) {
             val (url, result) = results.receive()
-            result.onSuccess { value -> jobs.forEach { j -> j.cancel() }; return@coroutineScope value }
+            result.onSuccess { value -> jobs.forEach { j -> j.cancel() }; return@coroutineScope url to value }
             result.onFailure { e -> errors += "${URL(url).host}: ${describe(e)}" }
         }
         throw ApiException(errors.joinToString("; "))

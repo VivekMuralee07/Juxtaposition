@@ -29,5 +29,5 @@ class ApiClient(baseUrl: String) {
     }
 
     fun nearby(lat: Double, lng: Double, radiusM: Int): NearbyResult =
-        parseNearby(get("/api/nearby?lat=$lat&lng=$lng&radius=$radiusM"))
+        parseNearby(get("/api/nearby?lat=$lat&lng=$lng&radius=$radiusM")).copy(via = "server")
 }

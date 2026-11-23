@@ -5,3 +5,13 @@ android/app/build/
 android/local.properties
 *.iml
 .idea/
+
+# Signing material must never be committed
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing-info*.txt
+
+# Kotlin build tool crash logs
+.kotlin/

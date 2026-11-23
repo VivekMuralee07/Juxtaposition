@@ -49,9 +49,12 @@ private val NorthRed = Color(0xFFFF6B6B)
 fun RadarView(
     places: List<Place>, selected: Place?, radiusM: Int,
     onSelect: (Place?) -> Unit, modifier: Modifier = Modifier, animate: Boolean = true,
+    /** Direction the user faces (degrees from true north) when it should be "up"; null = north is up. */
+    facingDeg: Float? = null, showFacingCone: Float? = null,
 ) {
     val measurer = rememberTextMeasurer()
     val radiusKm = radiusM / 1000.0
+    val rotation by rememberUpdatedState(facingDeg ?: 0f) // read at draw / tap time, so taps always match what is drawn
     val closedIds = remember(places) {
         val now = java.time.LocalDateTime.now()
         places.filter { it.hoursStatus(now) is HoursStatus.Closed }.map { it.id }.toSet()
@@ -67,7 +70,7 @@ fun RadarView(
     fun layout(w: Float, h: Float): List<Spot> {
         val pxPerKm = (minOf(w, h) / 2f - 34f) / radiusKm
         return places.map {
-            val (px, py) = RadarMath.toPlane(it.bearingDeg, it.distanceKm)
+            val (px, py) = RadarMath.toPlane(it.bearingDeg - rotation.toDouble(), it.distanceKm)
             val (sx, sy) = RadarMath.project(px, py, pxPerKm, w / 2f, h / 2f)
             Spot(it, sx, sy)
         }.sortedByDescending { it.place.distanceKm } // nearest drawn last, so it sits on top
@@ -115,10 +118,17 @@ fun RadarView(
             drawLine(Accent.copy(alpha = 0.55f), Offset(cx, cy), Offset(cx + outer, cy), strokeWidth = 2f)
         }
 
-        // north
-        drawLine(NorthRed.copy(alpha = 0.35f), Offset(cx, cy), Offset(cx, cy - outer), strokeWidth = 1.5f)
-        drawCircle(NorthRed.copy(alpha = 0.18f), 13f, Offset(cx, cy - outer - 4f))
-        drawText(measurer, "N", Offset(cx - 5.5f, cy - outer - 15f), TextStyle(fontSize = 12.sp, color = NorthRed, fontWeight = FontWeight.Bold))
+        // compass letters sit on the outer ring and rotate with the view; N is highlighted
+        for ((label, deg) in listOf("N" to 0.0, "E" to 90.0, "S" to 180.0, "W" to 270.0)) {
+            val (lx, ly) = RadarMath.toPlane(deg - rotation, radiusKm)
+            val (sx, sy) = RadarMath.project(lx, ly, pxPerKm, cx, cy)
+            val isN = label == "N"
+            if (isN) drawLine(NorthRed.copy(alpha = 0.35f), Offset(cx, cy), Offset(sx, sy), strokeWidth = 1.5f)
+            val col = if (isN) NorthRed else RingLabel
+            drawCircle(col.copy(alpha = if (isN) 0.18f else 0.10f), 12f, Offset(sx, sy))
+            val lay = measurer.measure(label, TextStyle(fontSize = if (isN) 12.sp else 11.sp, color = col, fontWeight = FontWeight.Bold))
+            drawText(lay, topLeft = Offset(sx - lay.size.width / 2f, sy - lay.size.height / 2f))
+        }
 
         // places
         val spots = layout(w, h)
@@ -142,6 +152,21 @@ fun RadarView(
             .sortedWith(compareBy({ it.place.id != selected?.id }, { it.place.distanceKm }))
             .forEach { pill(measurer, it.place.name, Offset(it.x, it.y), w, h, placed, bright = it.place.id == selected?.id) }
 
+        // the direction you face: a soft beam from your dot (always up in heading-up mode)
+        showFacingCone?.let { facing ->
+            rotate(facing - rotation, Offset(cx, cy)) {
+                val beam = 78f
+                drawPath(
+                    androidx.compose.ui.graphics.Path().apply {
+                        moveTo(cx, cy)
+                        lineTo(cx - beam * 0.46f, cy - beam)
+                        lineTo(cx + beam * 0.46f, cy - beam)
+                        close()
+                    },
+                    Brush.verticalGradient(listOf(YouBlue.copy(alpha = 0.0f), YouBlue.copy(alpha = 0.40f)), startY = cy - beam, endY = cy),
+                )
+            }
+        }
         // you
         drawCircle(YouBlue.copy(alpha = 0.30f * (1f - pulseT)), 14f + 46f * pulseT, Offset(cx, cy))
         drawCircle(YouBlue.copy(alpha = 0.22f), 17f, Offset(cx, cy))
