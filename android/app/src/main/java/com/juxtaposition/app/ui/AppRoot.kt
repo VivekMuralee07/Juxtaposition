@@ -85,7 +85,8 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
     }
 
     if (showSettings) SettingsDialog(
-        current = vm.apiUrl, updateMessage = vm.updateMessage, onCheckUpdates = { vm.checkForUpdates(manual = true) },
+        current = vm.apiUrl, useServer = vm.useServer, onUseServer = vm::updateUseServer,
+        updateMessage = vm.updateMessage, onCheckUpdates = { vm.checkForUpdates(manual = true) },
         onDismiss = { showSettings = false; vm.clearUpdateMessage() },
     ) { vm.saveApiUrl(it); showSettings = false; vm.clearUpdateMessage() }
 }
@@ -110,7 +111,10 @@ internal fun Header(
 }
 
 @Composable
-private fun SettingsDialog(current: String, updateMessage: String?, onCheckUpdates: () -> Unit, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+private fun SettingsDialog(
+    current: String, useServer: Boolean, onUseServer: (Boolean) -> Unit, updateMessage: String?, onCheckUpdates: () -> Unit,
+    onDismiss: () -> Unit, onSave: (String) -> Unit,
+) {
     var text by remember { mutableStateOf(current) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -120,7 +124,14 @@ private fun SettingsDialog(current: String, updateMessage: String?, onCheckUpdat
                 Text("Your Nearby Eats API (the Render service URL).", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(text, { text = it }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small)
-                Spacer(Modifier.height(16.dp))
+                Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Use my server as a backup", style = MaterialTheme.typography.bodyMedium)
+                        Text("The phone asks OpenStreetMap by itself either way.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = useServer, onCheckedChange = onUseServer)
+                }
+                Spacer(Modifier.height(10.dp))
                 Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.labelLarge)
                 TextButton(onClick = onCheckUpdates, contentPadding = PaddingValues(horizontal = 0.dp)) { Text("Check for updates") }
                 updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }

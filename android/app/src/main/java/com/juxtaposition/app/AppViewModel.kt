@@ -31,6 +31,8 @@ enum class ViewMode { LIST, RADAR }
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
     private val cache = PlacesCache(app.getSharedPreferences("places_cache", Context.MODE_PRIVATE))
+    private val favoritesStore = FavoritesStore(app.getSharedPreferences("favorites", Context.MODE_PRIVATE))
+    private var pickHistory: Set<String> = emptySet()
     private val locationManager = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private var loadSeq = 0
     private var fetching = false
@@ -58,6 +60,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var query by mutableStateOf(""); private set
     var openNow by mutableStateOf(false); private set
     var vegOnly by mutableStateOf(false); private set
+    var cuisine by mutableStateOf<String?>(null); private set
+    var savedOnly by mutableStateOf(false); private set
+    var sort by mutableStateOf(SortMode.NEAREST); private set
+    /** Saved places (kept in full, newest first). */
+    var favorites by mutableStateOf(favoritesStore.load()); private set
+    /** The place offered by "Pick for me" (so the details card can say so and offer another). */
+    var pickedId by mutableStateOf<String?>(null); private set
+    /** Whether your own server is also asked for the list (the phone asks OpenStreetMap by itself either way). */
+    var useServer by mutableStateOf(prefs.getBoolean("useServer", true)); private set
     var loading by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     var locationDenied by mutableStateOf(false); private set
@@ -103,14 +114,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init { checkForUpdates(manual = false) }
 
-    /** What the screens show: filters applied, distances measured from where the user is right now. */
+    /** Places within the chosen radius, measured from where the user is now (before the other filters). */
+    private fun inRadius(): List<Place> {
+        val here = origin ?: return emptyList()
+        return PlaceFilters.relocate(places, here.first, here.second).filter { it.distanceKm <= radiusM / 1000.0 }
+    }
+
+    /** Cuisine chips for what is actually nearby (empty when there is nothing to choose between). */
+    val cuisineChips: List<CuisineChip> get() = CuisineChips.from(inRadius())
+
+    val favoriteIds: Set<String> get() = favorites.mapTo(HashSet()) { it.id }
+
+    /**
+     * What the screens show: filters applied, distances measured from where the user is right now.
+     * "Saved" shows every saved place (their fresh data when we have it), however far away.
+     */
     val visiblePlaces: List<Place>
         get() {
             val here = origin ?: return emptyList()
-            return PlaceFilters.visible(
-                PlaceFilters.relocate(places, here.first, here.second),
-                radiusM / 1000.0, typeFilter, query, vegOnly, openNow,
+            val base = if (savedOnly) Favorites.merge(favorites, places) else places
+            val filtered = PlaceFilters.visible(
+                PlaceFilters.relocate(base, here.first, here.second),
+                if (savedOnly) Double.MAX_VALUE else radiusM / 1000.0, typeFilter, query, vegOnly, openNow, cuisine = cuisine,
             )
+            return PlaceSorting.sort(filtered, sort)
         }
 
     val selected: Place? get() = selectedId?.let { id -> visiblePlaces.firstOrNull { it.id == id } }
@@ -138,7 +165,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun updateQuery(q: String) { query = q; selectedId = null }
     fun updateOpenNow(on: Boolean) { openNow = on; selectedId = null }
     fun updateVegOnly(on: Boolean) { vegOnly = on; selectedId = null }
-    fun select(p: Place?) { selectedId = p?.id }
+    fun select(p: Place?) { selectedId = p?.id; if (p?.id != pickedId) pickedId = null }
+    fun updateCuisine(c: String?) { cuisine = if (cuisine == c) null else c; selectedId = null; pickedId = null }
+    fun updateSavedOnly(on: Boolean) { savedOnly = on; selectedId = null; pickedId = null }
+    fun updateSort(m: SortMode) { sort = m }
+
+    fun toggleFavorite(p: Place) {
+        favorites = Favorites.toggle(favorites, p)
+        favoritesStore.save(favorites)
+        if (savedOnly && favorites.isEmpty()) savedOnly = false
+    }
+
+    /** Offers one random place that is not closed, from whatever the filters currently show. Asking again gives another. */
+    fun pickForMe() {
+        val (pick, history) = PickForMe.next(visiblePlaces, pickHistory, kotlin.random.Random.Default)
+        pickHistory = history
+        if (pick == null) { pickedId = null; error = "Nothing open to pick from here. Try clearing a filter or tap the location button to refresh."; return }
+        selectedId = pick.id
+        pickedId = pick.id
+    }
+
+    fun updateUseServer(on: Boolean) { useServer = on; prefs.edit().putBoolean("useServer", on).apply() }
     fun dismissError() { error = null }
 
     private fun setOrigin(lat: Double, lng: Double) {
@@ -231,12 +278,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private suspend fun fetchFirst(lat: Double, lng: Double): Pair<NearbyResult?, List<String>> {
         val ch = Channel<Pair<String, Result<NearbyResult>>>(Channel.UNLIMITED)
-        val jobs = listOf(
+        val jobs = mutableListOf(
             viewModelScope.launch { ch.send("OpenStreetMap" to runCatching { OverpassClient.nearby(lat, lng, LiveUpdates.MAX_RADIUS_M) }) },
-            viewModelScope.launch { ch.send("server" to runCatching { withContext(Dispatchers.IO) { ApiClient(apiUrl).nearby(lat, lng, LiveUpdates.MAX_RADIUS_M) } }) },
         )
+        if (useServer) {
+            jobs += viewModelScope.launch { ch.send("server" to runCatching { withContext(Dispatchers.IO) { ApiClient(apiUrl).nearby(lat, lng, LiveUpdates.MAX_RADIUS_M) } }) }
+        }
         val problems = mutableListOf<String>()
-        repeat(2) {
+        repeat(jobs.size) {
             val (source, result) = ch.receive()
             result.onSuccess { value -> jobs.forEach { j -> j.cancel() }; return value to emptyList() }
             result.onFailure { e -> problems += "$source: ${friendly(e)}" }
@@ -261,6 +310,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             when {
                 fresh != null -> {
                     places = fresh.places; fetchedAt = lat to lng; notice = null
+                    if (cuisine != null && fresh.places.none { it.category()?.label == cuisine }) cuisine = null
                     dataInfo = DataInfo(fresh.via, tookMs, System.currentTimeMillis(), saved = false)
                     cache.save(key, fresh)
                 }

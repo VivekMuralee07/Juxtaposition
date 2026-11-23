@@ -10,39 +10,60 @@ object Walking {
     fun kmForMinutes(min: Double) = min / 60 * SPEED_KMH / DETOUR
 }
 
-/** A food-specific emoji for a place, from its cuisine (then its name), falling back to its type. Only long-supported emoji (Unicode <= 10). */
+data class CuisineCategory(val label: String, val emoji: String)
+data class CuisineChip(val label: String, val emoji: String, val count: Int)
+
+/** A food-specific emoji and category for a place, from its cuisine (then its name). Only long-supported emoji (Unicode <= 10). */
 object CuisineIcon {
-    private val RULES: List<Pair<List<String>, String>> = listOf(
-        listOf("biryani", "biriyani") to "🍛",
-        listOf("dosa", "idli", "vada", "south indian", "udupi", "tiffin") to "🥞",
-        listOf("pizza", "pizzeria") to "🍕",
-        listOf("burger", "burgers") to "🍔",
-        listOf("momo", "momos", "dumpling", "dumplings", "dim sum") to "🥟",
-        listOf("noodle", "noodles", "ramen", "chinese", "thai", "asian", "pan asian") to "🍜",
-        listOf("sushi", "japanese") to "🍣",
-        listOf("fried chicken", "chicken", "wings") to "🍗",
-        listOf("kebab", "kebabs", "bbq", "barbecue", "grill", "tandoori", "shawarma", "tikka") to "🍢",
-        listOf("seafood", "fish") to "🐟",
-        listOf("sandwich", "sandwiches", "sub", "subs") to "🥪",
-        listOf("pasta", "italian") to "🍝",
-        listOf("mexican", "taco", "tacos", "burrito") to "🌮",
-        listOf("steak", "steak house", "steakhouse") to "🥩",
-        listOf("salad", "healthy", "vegan") to "🥗",
-        listOf("breakfast", "brunch", "egg", "eggs") to "🍳",
-        listOf("ice cream", "icecream", "gelato", "frozen yogurt") to "🍦",
-        listOf("dessert", "desserts", "cake", "cakes", "bakery", "pastry", "sweets", "sweet", "donut", "waffle", "waffles") to "🍰",
-        listOf("tea", "chai") to "🍵",
-        listOf("coffee", "coffee shop", "cafe", "cafes") to "☕",
-        listOf("juice", "smoothie", "milkshake", "shake", "shakes") to "🥤",
-        listOf("indian", "north indian", "curry", "mughlai", "punjabi", "hyderabadi", "andhra", "rice", "thali") to "🍛",
+    private class Rule(val label: String, val emoji: String, val words: List<String>)
+    // Order matters: specific dishes before generic cuisines ("kebab" before "indian").
+    private val RULES: List<Rule> = listOf(
+        Rule("Biryani", "🍛", listOf("biryani", "biriyani")),
+        Rule("South Indian", "🥞", listOf("dosa", "idli", "vada", "south indian", "udupi", "tiffin")),
+        Rule("Pizza", "🍕", listOf("pizza", "pizzeria")),
+        Rule("Burgers", "🍔", listOf("burger", "burgers")),
+        Rule("Momos", "🥟", listOf("momo", "momos", "dumpling", "dumplings", "dim sum")),
+        Rule("Chinese & Asian", "🍜", listOf("noodle", "noodles", "ramen", "chinese", "thai", "asian", "pan asian")),
+        Rule("Japanese", "🍣", listOf("sushi", "japanese")),
+        Rule("Chicken", "🍗", listOf("fried chicken", "chicken", "wings")),
+        Rule("Kebabs & BBQ", "🍢", listOf("kebab", "kebabs", "bbq", "barbecue", "grill", "tandoori", "shawarma", "tikka")),
+        Rule("Seafood", "🐟", listOf("seafood", "fish")),
+        Rule("Sandwiches", "🥪", listOf("sandwich", "sandwiches", "sub", "subs")),
+        Rule("Italian", "🍝", listOf("pasta", "italian")),
+        Rule("Mexican", "🌮", listOf("mexican", "taco", "tacos", "burrito")),
+        Rule("Steak", "🥩", listOf("steak", "steak house", "steakhouse")),
+        Rule("Healthy", "🥗", listOf("salad", "healthy", "vegan")),
+        Rule("Breakfast", "🍳", listOf("breakfast", "brunch", "egg", "eggs")),
+        Rule("Ice cream", "🍦", listOf("ice cream", "icecream", "gelato", "frozen yogurt")),
+        Rule("Desserts & bakery", "🍰", listOf("dessert", "desserts", "cake", "cakes", "bakery", "pastry", "sweets", "sweet", "donut", "waffle", "waffles")),
+        Rule("Tea", "🍵", listOf("tea", "chai")),
+        Rule("Coffee", "☕", listOf("coffee", "coffee shop", "cafe", "cafes")),
+        Rule("Juices & shakes", "🥤", listOf("juice", "smoothie", "milkshake", "shake", "shakes")),
+        Rule("Indian", "🍛", listOf("indian", "north indian", "curry", "mughlai", "punjabi", "hyderabadi", "andhra", "rice", "thali")),
     )
 
     private fun normalise(s: String?) = " " + (s ?: "").lowercase().replace(Regex("[^a-z ]+"), " ").replace(Regex(" +"), " ") + " "
 
-    private fun match(text: String): String? = RULES.firstOrNull { (words, _) -> words.any { text.contains(" $it ") } }?.second
+    private fun match(text: String): Rule? = RULES.firstOrNull { r -> r.words.any { text.contains(" $it ") } }
+
+    /** The category from the cuisine tag, else from the name; null when neither says anything about the food. */
+    fun category(cuisine: String?, name: String? = null): CuisineCategory? =
+        (match(normalise(cuisine)) ?: match(normalise(name)))?.let { CuisineCategory(it.label, it.emoji) }
 
     fun emoji(type: String, cuisine: String?, name: String? = null): String =
-        match(normalise(cuisine)) ?: match(normalise(name)) ?: when (type) { "fast_food" -> "🍔"; "cafe" -> "☕"; else -> "🍽️" }
+        category(cuisine, name)?.emoji ?: when (type) { "fast_food" -> "🍔"; "cafe" -> "☕"; else -> "🍽️" }
+}
+
+fun Place.category() = CuisineIcon.category(cuisine, name)
+
+object CuisineChips {
+    /** The categories present in [places], most common first. Empty when there is nothing to choose between (fewer than two). */
+    fun from(places: List<Place>, max: Int = 8): List<CuisineChip> {
+        val chips = places.mapNotNull { it.category() }.groupBy { it }
+            .map { (c, list) -> CuisineChip(c.label, c.emoji, list.size) }
+            .sortedWith(compareByDescending<CuisineChip> { it.count }.thenBy { it.label })
+        return if (chips.size < 2) emptyList() else chips.take(max)
+    }
 }
 
 fun Place.emoji() = CuisineIcon.emoji(type, cuisine, name)
