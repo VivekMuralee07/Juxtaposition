@@ -17,7 +17,9 @@ render.yaml  Render blueprint
 - **Food-specific icons** (🍛 biryani, 🍕 pizza, 🍔 burgers, ☕ coffee, 🥟 momos, …) chosen from the cuisine tag, or the place's name when there is no cuisine.
 - **Radar rings are walking minutes** ("5 min · 10 min · 1 km · 16 min"; about 5 km/h with a 1.3x street detour). **Pinch or double-tap to zoom** (up to 6x; the rings rescale), tap a place for a light haptic tick.
 - List: **pull down to refresh**; items slide into place when you change a filter or walk past one; List/Radar cross-fade. Splash screen on launch and a **themed app icon** for Android 13+.
-- Tap a place for details: distance, direction, walking time, address, hours, and Directions / Call / Website buttons.
+- Tap a place for details: distance, direction, walking time, address, hours, and **Directions** (starts walking navigation in Google Maps if installed, otherwise opens any map app's pin, otherwise the browser), **Call**, **Website** and **Share** (name, address, hours, phone, website and a map link; nothing about where *you* are). A link opens the place on **OpenStreetMap's editor** so missing hours or cuisine can be added (a free OpenStreetMap account is needed to save changes).
+- **Update check**: the app is installed by hand, so once a day it asks GitHub whether a newer release exists and shows an "Update available" banner with a Download button (Settings has the version and a manual "Check for updates").
+- **Screen readers**: the radar is a drawing, so it announces a spoken summary ("5 places within 1 kilometre. Nearest: Truffles, 180 metres north-east…") and points to the List view, which is fully readable.
 - A short **data line** at the bottom ("Updated 3 min ago • GPS ±12 m"); tap it for the full detail: which source answered (an OpenStreetMap server via the phone, or your server, or a saved copy), how long it took, and the location accuracy.
 
 ## How the data is loaded

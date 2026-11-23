@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -34,6 +36,7 @@ import com.juxtaposition.app.Place
 import com.juxtaposition.app.HoursStatus
 import com.juxtaposition.app.hoursStatus
 import com.juxtaposition.app.RadarMath
+import com.juxtaposition.app.RadarSummary
 import com.juxtaposition.app.RadarZoom
 import com.juxtaposition.app.RingScale
 
@@ -85,9 +88,11 @@ fun RadarView(
         }.sortedByDescending { it.place.distanceKm } // nearest drawn last, so it sits on top
     }
 
+    val spoken = RadarSummary.describe(places, RadarZoom.visibleRadiusM(radiusM, zoom)) // the radar is a drawing; this is what a screen reader says
     Canvas(
         modifier
             .fillMaxSize()
+            .semantics { contentDescription = spoken }
             .pointerInput(places, radiusM) {
                 detectTapGestures(
                     onDoubleTap = { onZoomChange(RadarZoom.toggle(zoomNow)) },
