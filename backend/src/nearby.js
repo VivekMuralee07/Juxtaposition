@@ -8,7 +8,7 @@ const STALE_OK_MS = 6 * 60 * 60_000; // if every mirror fails, serve a previous 
 const USER_AGENT = 'Juxtaposition-NearbyRestaurants/1.0 (self-hosted)';
 const TYPES = { restaurant: 'restaurant', fast_food: 'fast_food', cafe: 'cafe' };
 const CACHE_MS = 5 * 60_000;
-const MAX_RESULTS = 80;
+const MAX_RESULTS = 250; // nearest N after sorting; the query itself is not capped (a cap would keep arbitrary, not nearest, places)
 
 const cache = new Map(); // key -> { at, data }
 const inflight = new Map();
@@ -26,7 +26,7 @@ function buildQuery(lat, lng, radiusM, types) {
   // One exact amenity=<type> clause per type: much cheaper for Overpass than a regex over all amenities.
   const around = `(around:${radiusM},${lat},${lng})`;
   const clauses = types.map((t) => `nwr["amenity"="${t}"]["name"]${around};`).join('');
-  return `[out:json][timeout:25];(${clauses});out center tags ${MAX_RESULTS * 3};`;
+  return `[out:json][timeout:25];(${clauses});out center tags;`;
 }
 
 function address(t) {

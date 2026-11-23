@@ -26,7 +26,10 @@ object OpeningHours {
     private fun parse(raw: String): Array<List<Pair<Int, Int>>>? {
         val days = Array<List<Pair<Int, Int>>>(7) { emptyList() }
         var sawRule = false
-        for (part in raw.split(';')) {
+        // Rules are separated by ';' and often also by ',' right after a time ("Mo-Sa 10:00-20:00, Su off").
+        // A comma after a digit and before a letter starts a new rule; "Mo,We,Fr" and "10:00-12:00, 14:00-18:00" are not split.
+        val parts = raw.split(';').flatMap { it.split(Regex("(?<=\\d)\\s*,\\s*(?=[A-Za-z])")) }
+        for (part in parts) {
             val p = part.trim()
             if (p.isEmpty()) continue
             if (UNSUPPORTED.containsMatchIn(p)) return null

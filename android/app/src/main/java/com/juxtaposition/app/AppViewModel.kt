@@ -27,7 +27,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     var apiUrl by mutableStateOf(prefs.getString("apiUrl", BuildConfig.DEFAULT_API_URL)!!); private set
     var origin by mutableStateOf<Pair<Double, Double>?>(null); private set
-    var radiusM by mutableIntStateOf(1000); private set
+    var radiusM by mutableIntStateOf(5000); private set
     var typeFilter by mutableStateOf<String?>(null); private set
     var places by mutableStateOf<List<Place>>(emptyList()); private set
     var selected by mutableStateOf<Place?>(null); private set
@@ -50,7 +50,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 (typeFilter == null || p.type == typeFilter) &&
                     (q.isEmpty() || p.name.lowercase().contains(q) || (p.cuisine?.lowercase()?.contains(q) == true)) &&
                     (!vegOnly || p.vegetarian != null) &&
-                    (!openNow || p.hoursStatus(now) is HoursStatus.Open)
+                    (!openNow || p.hoursStatus(now) !is HoursStatus.Closed) // most OSM places list no hours, so "open now" keeps them (they are labelled "Hours not listed")
             }
         }
 

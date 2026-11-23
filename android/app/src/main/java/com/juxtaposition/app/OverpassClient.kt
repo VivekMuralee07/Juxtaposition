@@ -27,12 +27,12 @@ object OverpassClient {
     )
     val TYPES = listOf("restaurant", "fast_food", "cafe")
     private const val USER_AGENT = "NearbyEats-Android/1.4 (personal app)"
-    private const val MAX_RESULTS = 80
+    private const val MAX_RESULTS = 250 // nearest N after sorting; the query is not capped (a cap would keep arbitrary, not nearest, places)
 
     fun buildQuery(lat: Double, lng: Double, radiusM: Int, types: List<String> = TYPES): String {
         val around = "(around:$radiusM,$lat,$lng)"
         val clauses = types.joinToString("") { "nwr[\"amenity\"=\"$it\"][\"name\"]$around;" }
-        return "[out:json][timeout:25];($clauses);out center tags ${MAX_RESULTS * 3};"
+        return "[out:json][timeout:25];($clauses);out center tags;"
     }
 
     /** `post(url, query)` returns the response body or throws. Injectable for tests. */

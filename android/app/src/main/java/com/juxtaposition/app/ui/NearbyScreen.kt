@@ -15,6 +15,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -42,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.juxtaposition.app.AppViewModel
+import com.juxtaposition.app.DistanceBands
 import com.juxtaposition.app.HoursStatus
 import com.juxtaposition.app.Place
 import com.juxtaposition.app.ViewMode
@@ -100,7 +103,15 @@ fun NearbyContent(
             Chip("🌱  Veg", vegOnly) { onVegOnly(!vegOnly) }
             TYPES.forEach { (t, label) -> Chip(label, typeFilter == t) { onType(t) } }
         }
-        Spacer(Modifier.height(10.dp))
+        if (openNow) {
+            val unknown = places.count { it.hoursStatus() is HoursStatus.Unknown }
+            Text(
+                if (unknown > 0) "Hiding places that are closed. $unknown of ${places.size} have no hours listed, so they may or may not be open."
+                else "Hiding places that are closed.",
+                Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else Spacer(Modifier.height(10.dp))
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
@@ -164,10 +175,33 @@ private fun RadarCard(places: List<Place>, selected: Place?, radiusM: Int, onSel
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PlaceList(places: List<Place>, selected: Place?, onSelect: (Place) -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(places, key = { it.id }) { PlaceCard(it, it.id == selected?.id) { onSelect(it) } }
+    val groups = remember(places) { places.groupBy { DistanceBands.index(it.distanceKm) }.toSortedMap() }
+    LazyColumn(contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        groups.forEach { (band, inBand) ->
+            stickyHeader(key = "band$band") { BandHeader(DistanceBands.label(band), inBand.size) }
+            items(inBand, key = { it.id }) { p ->
+                Box(Modifier.padding(horizontal = 16.dp)) { PlaceCard(p, p.id == selected?.id) { onSelect(p) } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BandHeader(label: String, count: Int) {
+    Row(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(8.dp))
+        Box(Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primaryContainer).padding(horizontal = 8.dp, vertical = 2.dp)) {
+            Text("$count", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
     }
 }
 
@@ -208,7 +242,7 @@ private fun StatusText(p: Place) {
     when (val st = p.hoursStatus()) {
         is HoursStatus.Open -> Text(st.label, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF2F9E6B))
         is HoursStatus.Closed -> Text(st.label, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
-        HoursStatus.Unknown -> {}
+        HoursStatus.Unknown -> Text("Hours not listed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
     }
 }
 

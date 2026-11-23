@@ -76,4 +76,24 @@ class OpeningHoursTest {
     @Test fun neverOpenInSevenDays() {
         assertEquals(HoursStatus.Closed("Closed"), st("Mo-Su off", WED, 12))
     }
+
+    @Test fun rulesSeparatedByCommas() {
+        val h = "Mo-Sa 10:00-20:00, Su 12:00-18:00"
+        assertEquals(HoursStatus.Open("Open · closes 20:00"), st(h, WED, 12))
+        assertEquals(HoursStatus.Open("Open · closes 18:00"), st(h, SUN, 12))
+        assertTrue(st(h, SUN, 19) is HoursStatus.Closed)
+        assertTrue(st("Mo-Fr 09:00-17:00, Sa,Su off", SAT, 12) is HoursStatus.Closed)
+        assertTrue(st("Mo-Fr 09:00-17:00, Sa,Su off", WED, 12) is HoursStatus.Open)
+    }
+
+    @Test fun dayListsAndSplitShiftsAreNotBrokenByTheCommaRule() {
+        assertTrue(st("Mo,We,Fr 10:00-20:00", WED, 12) is HoursStatus.Open)
+        assertTrue(st("Mo,We,Fr 10:00-20:00", 1, 12) is HoursStatus.Closed)      // Tuesday not listed
+        assertTrue(st("Mo-Su 11:00-15:00, 18:00-23:00", WED, 16) is HoursStatus.Closed)
+        assertTrue(st("Mo-Su 11:00-15:00, 18:00-23:00", WED, 19) is HoursStatus.Open)
+    }
+
+    @Test fun lowerCaseAndLooseSpacing() {
+        assertTrue(st("mo-su 9:00 - 22:00", WED, 12) is HoursStatus.Open)
+    }
 }
