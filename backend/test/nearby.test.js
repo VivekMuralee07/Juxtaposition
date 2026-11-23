@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
-process.env.OVERPASS_BACKOFF_MS = '0'; // no real waiting between mirrors in tests
+process.env.OVERPASS_HEDGE_MS = '25'; // tests don't wait seconds before asking the next mirror
+process.env.OVERPASS_TIMEOUT_MS = '400';
 const { nearby, normalise, bearingDeg, compass, BadRequest, UpstreamError, _cache } = require('../src/nearby');
 
 const ORIGIN = { lat: 12.9716, lng: 77.5946 };
@@ -100,4 +101,44 @@ test('nearby: serves the previous list (stale) when every mirror fails', async (
   assert.strictEqual(second.places.length, first.places.length);
   clock += 7 * 60 * 60_000; // too old to be useful
   await assert.rejects(nearby({ lat: 18.52, lng: 73.85 }, { fetchImpl: down, now }), UpstreamError);
+});
+
+test('buildQuery uses exact amenity matches (no regex) and the radius', () => {
+  const { buildQuery } = require('../src/nearby');
+  const q = buildQuery(12.9, 77.6, 1000, ['restaurant', 'cafe']);
+  assert.match(q, /nwr\["amenity"="restaurant"\]\["name"\]\(around:1000,12.9,77.6\)/);
+  assert.match(q, /nwr\["amenity"="cafe"\]/);
+  assert.doesNotMatch(q, /~/);
+  assert.doesNotMatch(q, /fast_food/);
+});
+
+test('hedged: a hanging first mirror does not block a fast second one, and the loser is cancelled', async () => {
+  _cache.clear();
+  const signals = [];
+  const f = async (url, opts) => {
+    signals.push(opts.signal);
+    if (signals.length === 1) return new Promise((_, rej) => opts.signal.addEventListener('abort', () => rej(new Error('aborted')))); // hangs
+    return { ok: true, json: async () => overpass };
+  };
+  const t0 = Date.now();
+  const r = await nearby({ lat: 17.38, lng: 78.48 }, { fetchImpl: f });
+  assert.ok(r.places.length > 0);
+  assert.ok(Date.now() - t0 < 300, 'did not wait for the hanging mirror to time out');
+  assert.strictEqual(signals.length, 2);
+  assert.strictEqual(signals[0].aborted, true, 'hanging request cancelled once another won');
+});
+
+test('all mirrors hanging -> each reported as timeout, within the per-mirror limit', async () => {
+  _cache.clear();
+  const hang = (url, opts) => new Promise((_, rej) => opts.signal.addEventListener('abort', () => rej(opts.signal.reason || new Error('aborted'))));
+  const t0 = Date.now();
+  await assert.rejects(nearby({ lat: 13.08, lng: 80.27 }, { fetchImpl: hang }), (e) => {
+    assert.ok(e instanceof UpstreamError);
+    assert.match(e.detail, /overpass-api\.de: timeout/);
+    assert.match(e.detail, /overpass\.kumi\.systems: timeout/);
+    assert.match(e.detail, /overpass\.private\.coffee: timeout/);
+    return true;
+  });
+  assert.ok(Date.now() - t0 < 1500);
+  assert.strictEqual(_cache.size, 0);
 });

@@ -23,9 +23,10 @@ const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const compass = (deg) => COMPASS[Math.round(deg / 45) % 8];
 
 function buildQuery(lat, lng, radiusM, types) {
-  const amen = types.join('|');
-  return `[out:json][timeout:25];(node["amenity"~"^(${amen})$"]["name"](around:${radiusM},${lat},${lng});` +
-    `way["amenity"~"^(${amen})$"]["name"](around:${radiusM},${lat},${lng}););out center tags ${MAX_RESULTS * 3};`;
+  // One exact amenity=<type> clause per type: much cheaper for Overpass than a regex over all amenities.
+  const around = `(around:${radiusM},${lat},${lng})`;
+  const clauses = types.map((t) => `nwr["amenity"="${t}"]["name"]${around};`).join('');
+  return `[out:json][timeout:25];(${clauses});out center tags ${MAX_RESULTS * 3};`;
 }
 
 function address(t) {
@@ -58,34 +59,74 @@ class UpstreamError extends Error {
   constructor(detail) { super(detail); this.detail = detail; }
 }
 const hostOf = (u) => { try { return new URL(u).host; } catch { return u; } };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const num = (name, dflt) => (process.env[name] !== undefined ? Number(process.env[name]) : dflt);
 
-async function queryOverpass(query, fetchImpl) {
-  const errors = [];
-  for (const url of ENDPOINTS) {
-    try {
-      const res = await fetchImpl(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': USER_AGENT },
-        body: 'data=' + encodeURIComponent(query),
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (!res.ok) {
-        if (res.status === 429 || res.status === 504) await sleep(Number(process.env.OVERPASS_BACKOFF_MS ?? 1000)); // brief breather before the next mirror
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const json = await res.json();
-      // Overpass reports timeouts / out-of-memory as HTTP 200 with an empty list and a "remark".
-      // That is a failure, not "no restaurants here": try the next mirror and never cache it.
-      if (json.remark && /error|timed out|out of memory|too busy/i.test(json.remark) && !(json.elements || []).length) {
-        throw new Error(String(json.remark).replace(/^runtime error:\s*/i, '').slice(0, 80));
-      }
-      return json;
-    } catch (e) {
-      errors.push(`${hostOf(url)}: ${e.cause?.code || e.name === 'TimeoutError' ? (e.cause?.code || 'timeout') : e.message}`);
-    }
+function describe(e) {
+  if (e?.name === 'AbortError' || e?.name === 'TimeoutError' || /timeout/i.test(e?.message || '')) return 'timeout';
+  return e?.cause?.code || e?.message || String(e);
+}
+
+async function attempt(url, query, fetchImpl, signal) {
+  const res = await fetchImpl(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': USER_AGENT },
+    body: 'data=' + encodeURIComponent(query),
+    signal,
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  // Overpass reports timeouts / out-of-memory as HTTP 200 with an empty list and a "remark".
+  // That is a failure, not "no restaurants here": never accept (or cache) it.
+  if (json.remark && /error|timed out|out of memory|too busy/i.test(json.remark) && !(json.elements || []).length) {
+    throw new Error(String(json.remark).replace(/^runtime error:\s*/i, '').slice(0, 80));
   }
-  throw new UpstreamError(errors.join('; ') || 'no Overpass endpoint configured');
+  return json;
+}
+
+/**
+ * Hedged requests: ask the first mirror; if it hasn't answered within HEDGE_MS (or it fails straight away)
+ * ask the next one too, and so on. The first good answer wins and the rest are cancelled.
+ * Worst case is roughly HEDGE_MS * (mirrors - 1) + PER_MIRROR_MS instead of mirrors * PER_MIRROR_MS.
+ */
+function queryOverpass(query, fetchImpl) {
+  const hedgeMs = num('OVERPASS_HEDGE_MS', 4000);
+  const perMirrorMs = num('OVERPASS_TIMEOUT_MS', 25_000);
+  return new Promise((resolve, reject) => {
+    if (!ENDPOINTS.length) return reject(new UpstreamError('no Overpass endpoint configured'));
+    const errors = [];
+    const controllers = [];
+    const timers = [];
+    let started = 0, failed = 0, settled = false;
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      timers.forEach(clearTimeout);
+      controllers.forEach((c) => c.abort());
+      fn(value);
+    };
+
+    const startNext = () => {
+      if (settled || started >= ENDPOINTS.length) return;
+      const url = ENDPOINTS[started++];
+      const ctl = new AbortController();
+      controllers.push(ctl);
+      const killer = setTimeout(() => ctl.abort(new Error('timeout')), perMirrorMs);
+      timers.push(killer);
+      attempt(url, query, fetchImpl, ctl.signal).then(
+        (json) => finish(resolve, json),
+        (e) => {
+          if (settled) return;
+          clearTimeout(killer);
+          errors.push(`${hostOf(url)}: ${describe(e)}`);
+          if (++failed === ENDPOINTS.length) finish(reject, new UpstreamError(errors.join('; ')));
+          else startNext(); // don't wait for the hedge timer when a mirror has already failed
+        },
+      );
+      if (started < ENDPOINTS.length) timers.push(setTimeout(startNext, hedgeMs));
+    };
+    startNext();
+  });
 }
 
 class BadRequest extends Error {}
