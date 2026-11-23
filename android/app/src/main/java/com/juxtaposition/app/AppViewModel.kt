@@ -68,6 +68,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** One line for the footer: which source answered, how long it took, how fresh, and the location fix quality. */
     fun dataLine(): String? = DataLine.describe(dataInfo, fixInfo, System.currentTimeMillis())
+    fun dataLineShort(): String? = DataLine.short(dataInfo, fixInfo, System.currentTimeMillis())
 
     val hasData: Boolean get() = places.isNotEmpty()
 

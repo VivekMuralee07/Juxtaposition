@@ -11,7 +11,7 @@ data class Place(
 ) {
     val typeLabel get() = when (type) { "fast_food" -> "Fast food"; "cafe" -> "Cafe"; else -> "Restaurant" }
     /** Rough walking time: straight-line distance x1.3 for streets, at 5 km/h. */
-    val walkMinutes get() = Math.max(1, Math.round(distanceKm * 1.3 / 5.0 * 60).toInt())
+    val walkMinutes get() = Walking.minutes(distanceKm)
 }
 
 /** `via` = which source answered: an OpenStreetMap mirror's host name (asked from the phone) or "server". Null for saved copies. */

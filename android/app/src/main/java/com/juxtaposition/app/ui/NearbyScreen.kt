@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -29,8 +31,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.juxtaposition.app.AppViewModel
 import com.juxtaposition.app.DistanceBands
+import com.juxtaposition.app.RadarZoom
+import com.juxtaposition.app.emoji
 import com.juxtaposition.app.HoursStatus
 import com.juxtaposition.app.Place
 import com.juxtaposition.app.ViewMode
@@ -57,7 +65,8 @@ private val TYPES = listOf<Pair<String?, String>>(null to "All", "restaurant" to
 fun NearbyScreen(vm: AppViewModel) {
     NearbyContent(
         places = vm.visiblePlaces, selected = vm.selected, radiusM = vm.radiusM, typeFilter = vm.typeFilter,
-        viewMode = vm.viewMode, loading = vm.loading && !vm.hasData, openNow = vm.openNow, vegOnly = vm.vegOnly, dataLine = vm.dataLine(),
+        viewMode = vm.viewMode, loading = vm.loading && !vm.hasData, openNow = vm.openNow, vegOnly = vm.vegOnly, dataLine = vm.dataLine(), dataLineShort = vm.dataLineShort(),
+        refreshing = vm.loading, onRefresh = { vm.locate() },
         compass = CompassUi(vm.headingDeg, vm.headingUp, vm.compassAvailable, vm.compassLow), onToggleHeading = vm::toggleHeadingUp,
         onRadius = vm::setRadius, onType = vm::updateTypeFilter, onMode = vm::updateViewMode, onSelect = vm::select,
         onOpenNow = vm::updateOpenNow, onVegOnly = vm::updateVegOnly,
@@ -72,7 +81,8 @@ fun NearbyContent(
     openNow: Boolean, vegOnly: Boolean,
     onRadius: (Int) -> Unit, onType: (String?) -> Unit, onMode: (ViewMode) -> Unit, onSelect: (Place?) -> Unit,
     onOpenNow: (Boolean) -> Unit, onVegOnly: (Boolean) -> Unit,
-    animateRadar: Boolean = true, dataLine: String? = null,
+    animateRadar: Boolean = true, dataLine: String? = null, dataLineShort: String? = null,
+    refreshing: Boolean = false, onRefresh: () -> Unit = {},
     compass: CompassUi = CompassUi(), onToggleHeading: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -119,8 +129,10 @@ fun NearbyContent(
             when {
                 loading && places.isEmpty() -> SkeletonList()
                 places.isEmpty() -> EmptyState()
-                viewMode == ViewMode.LIST -> PlaceList(places, selected, onSelect)
-                else -> RadarCard(places, selected, radiusM, onSelect, animateRadar, compass, onToggleHeading)
+                else -> Crossfade(viewMode, animationSpec = tween(220), label = "view") { mode ->
+                    if (mode == ViewMode.LIST) PlaceList(places, selected, onSelect, refreshing, onRefresh)
+                    else RadarCard(places, selected, radiusM, onSelect, animateRadar, compass, onToggleHeading)
+                }
             }
         }
 
@@ -129,12 +141,19 @@ fun NearbyContent(
             enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
         ) { selected?.let { PlaceSheet(it, onClose = { onSelect(null) }) } }
         if (selected == null) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                dataLine?.let {
-                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            var expanded by remember { mutableStateOf(false) }
+            Column(
+                Modifier.fillMaxWidth().clickable(enabled = dataLine != null) { expanded = !expanded }.padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                val line = if (expanded) dataLine else dataLineShort
+                line?.let {
+                    Text(
+                        if (expanded) it else "$it  ⓘ", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = if (expanded) 3 else 1, overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 Text(
-                    "Map data © OpenStreetMap contributors • straight-line distances",
+                    "Map data © OpenStreetMap contributors",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                 )
             }
@@ -168,11 +187,14 @@ private fun RadarCard(
 ) {
     val headingUp = compass.headingUp && compass.available
     val facing = if (headingUp) compass.headingDeg else null
+    var zoom by remember { mutableFloatStateOf(1f) }
+    androidx.compose.runtime.LaunchedEffect(radiusM) { zoom = 1f } // a new radius starts at the full view
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Box(Modifier.weight(1f).fillMaxWidth().clip(MaterialTheme.shapes.large)) {
             RadarView(
                 places, selected, radiusM, onSelect, Modifier.fillMaxSize(), animate,
                 facingDeg = facing, showFacingCone = compass.headingDeg.takeIf { compass.available && it != null },
+                zoom = zoom, onZoomChange = { zoom = it },
             )
             Column(Modifier.align(Alignment.TopStart).padding(start = 14.dp, top = 12.dp).fillMaxWidth(0.72f)) {
                 Text(
@@ -187,7 +209,15 @@ private fun RadarCard(
                 if (headingUp && compass.lowAccuracy) {
                     Text("Compass needs calibrating: wave the phone in a figure 8", color = Color(0xFFFFC27A), style = MaterialTheme.typography.labelSmall)
                 }
-                Text("Tap a dot for details • faded = closed now", color = Color(0xFF8394AA), style = MaterialTheme.typography.labelSmall)
+                Text("Tap a dot • pinch or double-tap to zoom • faded = closed", color = Color(0xFF8394AA), style = MaterialTheme.typography.labelSmall)
+            }
+            if (zoom > 1.05f) {
+                Surface(
+                    onClick = { zoom = RadarZoom.MIN }, shape = RoundedCornerShape(50), color = Color(0xFF2B394A),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
+                ) {
+                    Text("%.1f× • reset".format(zoom), Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = Color(0xFFB7C4D6), style = MaterialTheme.typography.labelMedium)
+                }
             }
             if (compass.available) {
                 FilledTonalIconButton(
@@ -210,15 +240,18 @@ private fun RadarCard(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-private fun PlaceList(places: List<Place>, selected: Place?, onSelect: (Place) -> Unit) {
+private fun PlaceList(places: List<Place>, selected: Place?, onSelect: (Place) -> Unit, refreshing: Boolean, onRefresh: () -> Unit) {
     val groups = remember(places) { places.groupBy { DistanceBands.index(it.distanceKm) }.toSortedMap() }
-    LazyColumn(contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        groups.forEach { (band, inBand) ->
-            stickyHeader(key = "band$band") { BandHeader(DistanceBands.label(band), inBand.size) }
-            items(inBand, key = { it.id }) { p ->
-                Box(Modifier.padding(horizontal = 16.dp)) { PlaceCard(p, p.id == selected?.id) { onSelect(p) } }
+    PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            groups.forEach { (band, inBand) ->
+                stickyHeader(key = "band$band") { BandHeader(DistanceBands.label(band), inBand.size) }
+                items(inBand, key = { it.id }) { p ->
+                    // items slide into place / fade when the filters change or you walk past one
+                    Box(Modifier.animateItem().padding(horizontal = 16.dp)) { PlaceCard(p, p.id == selected?.id) { onSelect(p) } }
+                }
             }
         }
     }
@@ -252,7 +285,7 @@ private fun PlaceCard(p: Place, selected: Boolean, onClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(0.dp),
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Avatar(p.type, 46)
+            Avatar(p, 46)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -282,9 +315,9 @@ private fun StatusText(p: Place) {
 }
 
 @Composable
-private fun Avatar(type: String, size: Int) {
-    Box(Modifier.size(size.dp).clip(CircleShape).background(typeColor(type).copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-        Text(typeEmoji(type), fontSize = (size * 0.46f).sp)
+private fun Avatar(place: Place, size: Int) {
+    Box(Modifier.size(size.dp).clip(CircleShape).background(typeColor(place.type).copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+        Text(place.emoji(), fontSize = (size * 0.46f).sp)
     }
 }
 
@@ -314,7 +347,7 @@ private fun PlaceSheet(p: Place, onClose: () -> Unit) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 12.dp, bottom = 14.dp)) {
             Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp, bottom = 8.dp).size(width = 40.dp, height = 4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(p.type, 48)
+                Avatar(p, 48)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(p.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
