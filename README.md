@@ -16,8 +16,8 @@ render.yaml  Render blueprint (starter plan)
 4. **It follows you**: while the app is open, distances and directions re-measure live as you walk, and after about 200 m of movement the list refreshes quietly in the background (the current list stays on screen; a failed refresh only shows a note). Rough location fixes (worse than 150 m) are ignored, and GPS updates stop when the app is closed or in the background.
    Distance (straight-line) and compass bearing are computed per place; results are sorted by distance.
    The phone saves the last good list for each area, so if both routes fail it shows the saved copy with a notice instead of nothing.
-4. The app plots them: you at the centre, distance rings around you, N marker; places closed right now are faded.
-5. Open/closed status is worked out on the phone from OpenStreetMap's `opening_hours` tag (common formats like `Mo-Sa 11:00-23:00; Su off`, overnight hours and 24/7). Public holidays are ignored, anything more exotic shows no status, and many places have no hours at all, so treat it as a guide.
+5. The app plots them: you at the centre, distance rings around you, N marker; places closed right now are faded.
+6. Open/closed status is worked out on the phone from OpenStreetMap's `opening_hours` tag (common formats like `Mo-Sa 11:00-23:00; Su off`, overnight hours and 24/7). Public holidays are ignored, anything more exotic shows no status, and many places have no hours at all, so treat it as a guide.
 
 **Data caveats:** OpenStreetMap is community-maintained, so coverage is good in big cities and patchier elsewhere, and it has **no ratings or menu prices**. Distances are straight-line (the detail card shows an approximate walking time). Map data (c) OpenStreetMap contributors. The public Overpass servers have fair-use limits; the server caches and identifies itself, but for heavy use run your own Overpass instance (`OVERPASS_URLS`).
 
