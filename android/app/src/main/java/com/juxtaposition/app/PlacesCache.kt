@@ -63,3 +63,14 @@ fun agoText(ms: Long): String {
         else -> "${min / (24 * 60)} d ago"
     }
 }
+
+/** Saved places, kept on the phone. Stored in full so they still show when far away or missing from the current list. */
+class FavoritesStore(private val prefs: SharedPreferences) {
+    fun load(): List<Place> = runCatching { parseNearby(prefs.getString(KEY, null) ?: return emptyList()).places }.getOrDefault(emptyList())
+
+    fun save(places: List<Place>) {
+        prefs.edit().putString(KEY, PlacesCache.toJson(NearbyResult(0, places))).apply()
+    }
+
+    private companion object { const val KEY = "favorites" }
+}

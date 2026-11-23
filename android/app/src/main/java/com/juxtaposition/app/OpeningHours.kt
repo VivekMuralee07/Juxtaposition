@@ -3,7 +3,10 @@ package com.juxtaposition.app
 import java.time.LocalDateTime
 
 sealed class HoursStatus {
-    data class Open(val label: String) : HoursStatus()
+    /** `minutesLeft` is how long until it closes (null for 24-hour places). Within [CLOSING_SOON_MIN] the label counts down. */
+    data class Open(val label: String, val minutesLeft: Int? = null) : HoursStatus() {
+        val closingSoon get() = minutesLeft != null && minutesLeft <= OpeningHours.CLOSING_SOON_MIN
+    }
     data class Closed(val label: String) : HoursStatus()
     data object Unknown : HoursStatus()
 }
@@ -16,6 +19,7 @@ sealed class HoursStatus {
  * Days: 0 = Monday ... 6 = Sunday.
  */
 object OpeningHours {
+    const val CLOSING_SOON_MIN = 45
     private val DAY_NAMES = listOf("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
     private val LONG_NAMES = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
     private val UNSUPPORTED = Regex("""(?i)\b(sunrise|sunset|dawn|dusk|week|SH|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b|[\[\]()+]|\d{4}""")
@@ -83,12 +87,16 @@ object OpeningHours {
     fun status(raw: String?, dayOfWeek: Int, minuteOfDay: Int): HoursStatus {
         if (raw.isNullOrBlank()) return HoursStatus.Unknown
         val days = parse(raw.trim()) ?: return HoursStatus.Unknown
-        if (days.all { it == listOf(0 to 1440) }) return HoursStatus.Open("Open 24 hours")
+        if (days.all { it == listOf(0 to 1440) }) return HoursStatus.Open("Open 24 hours", null)
+
+        fun open(closeMinute: Int, minutesLeft: Int) = HoursStatus.Open(
+            if (minutesLeft <= CLOSING_SOON_MIN) "Closes in $minutesLeft min" else "Open · closes ${hhmm(closeMinute)}", minutesLeft,
+        )
 
         // open now? today's intervals, or last night's that run past midnight
-        for ((s, e) in days[dayOfWeek]) if (minuteOfDay in s until minOf(e, 1440)) return HoursStatus.Open("Open · closes ${hhmm(e)}")
+        for ((s, e) in days[dayOfWeek]) if (minuteOfDay in s until minOf(e, 1440)) return open(e, e - minuteOfDay)
         val yesterday = (dayOfWeek + 6) % 7
-        for ((_, e) in days[yesterday]) if (e > 1440 && minuteOfDay < e - 1440) return HoursStatus.Open("Open · closes ${hhmm(e)}")
+        for ((_, e) in days[yesterday]) if (e > 1440 && minuteOfDay < e - 1440) return open(e, e - 1440 - minuteOfDay)
 
         // closed: find the next opening within a week
         for (offset in 0..7) {
