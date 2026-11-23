@@ -29,16 +29,20 @@ object OverpassClient {
     private const val USER_AGENT = "NearbyEats-Android/1.4 (personal app)"
     private const val MAX_RESULTS = 250 // nearest N after sorting; the query is not capped (a cap would keep arbitrary, not nearest, places)
 
+    /** Seconds Overpass may spend on a query: more for bigger areas. */
+    fun timeoutSec(radiusM: Int) = minOf(60, 25 + Math.round(radiusM / 1000.0 * 8).toInt())
+
     fun buildQuery(lat: Double, lng: Double, radiusM: Int, types: List<String> = TYPES): String {
+        // Exact matches on nodes and ways only (no relations: costly to resolve, almost never restaurants).
         val around = "(around:$radiusM,$lat,$lng)"
-        val clauses = types.joinToString("") { "nwr[\"amenity\"=\"$it\"][\"name\"]$around;" }
-        return "[out:json][timeout:25];($clauses);out center tags;"
+        val clauses = types.joinToString("") { "node[\"amenity\"=\"$it\"][\"name\"]$around;way[\"amenity\"=\"$it\"][\"name\"]$around;" }
+        return "[out:json][timeout:${timeoutSec(radiusM)}];($clauses);out center tags;"
     }
 
     /** `post(url, query)` returns the response body or throws. Injectable for tests. */
     suspend fun nearby(
         lat: Double, lng: Double, radiusM: Int,
-        mirrors: List<String> = MIRRORS, hedgeMs: Long = 3000, timeoutMs: Int = 20_000,
+        mirrors: List<String> = MIRRORS, hedgeMs: Long = 3000, timeoutMs: Int = (timeoutSec(radiusM) + 5) * 1000,
         post: suspend (String, String, Int) -> String = ::httpPost,
     ): NearbyResult {
         val query = buildQuery(lat, lng, radiusM)

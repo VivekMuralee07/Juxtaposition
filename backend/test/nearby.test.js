@@ -104,13 +104,16 @@ test('nearby: serves the previous list (stale) when every mirror fails', async (
   await assert.rejects(nearby({ lat: 18.52, lng: 73.85 }, { fetchImpl: down, now }), UpstreamError);
 });
 
-test('buildQuery uses exact amenity matches (no regex) and the radius', () => {
-  const { buildQuery } = require('../src/nearby');
+test('buildQuery: exact matches on nodes and ways only, radius-scaled timeout', () => {
+  const { buildQuery, timeoutSec } = require('../src/nearby');
   const q = buildQuery(12.9, 77.6, 1000, ['restaurant', 'cafe']);
-  assert.match(q, /nwr\["amenity"="restaurant"\]\["name"\]\(around:1000,12.9,77.6\)/);
-  assert.match(q, /nwr\["amenity"="cafe"\]/);
-  assert.doesNotMatch(q, /~/);
+  assert.match(q, /node\["amenity"="restaurant"\]\["name"\]\(around:1000,12.9,77.6\)/);
+  assert.match(q, /way\["amenity"="restaurant"\]\["name"\]\(around:1000,12.9,77.6\)/);
+  assert.match(q, /node\["amenity"="cafe"\]/);
+  assert.doesNotMatch(q, /nwr|rel|~/);
   assert.doesNotMatch(q, /fast_food/);
+  assert.match(q, /^\[out:json\]\[timeout:33\];/);
+  assert.deepStrictEqual([500, 1000, 2000, 5000, 9000].map(timeoutSec), [29, 33, 41, 60, 60]);
 });
 
 test('hedged: a hanging first mirror does not block a fast second one, and the loser is cancelled', async () => {

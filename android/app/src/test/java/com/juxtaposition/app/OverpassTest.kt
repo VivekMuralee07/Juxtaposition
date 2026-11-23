@@ -35,10 +35,13 @@ class OverpassTest {
         assertEquals(5000, r.radiusM)
     }
 
-    @Test fun queryUsesExactAmenityMatches() {
+    @Test fun queryUsesExactNodeAndWayMatchesAndScalesTheTimeout() {
         val q = OverpassClient.buildQuery(12.9, 77.6, 1000, listOf("restaurant", "cafe"))
-        assertTrue(q.contains("nwr[\"amenity\"=\"restaurant\"][\"name\"](around:1000,12.9,77.6);"))
-        assertTrue(q.contains("\"amenity\"=\"cafe\"")); assertFalse(q.contains("~")); assertFalse(q.contains("fast_food"))
+        assertTrue(q.contains("node[\"amenity\"=\"restaurant\"][\"name\"](around:1000,12.9,77.6);"))
+        assertTrue(q.contains("way[\"amenity\"=\"restaurant\"][\"name\"](around:1000,12.9,77.6);"))
+        assertTrue(q.contains("\"amenity\"=\"cafe\"")); assertFalse(q.contains("nwr")); assertFalse(q.contains("~")); assertFalse(q.contains("fast_food"))
+        assertTrue(q.startsWith("[out:json][timeout:33];"))
+        assertEquals(listOf(29, 33, 41, 60, 60), listOf(500, 1000, 2000, 5000, 9000).map { OverpassClient.timeoutSec(it) })
     }
 
     @Test fun firstGoodMirrorWinsAndASlowOneDoesNotBlock() = runBlocking {

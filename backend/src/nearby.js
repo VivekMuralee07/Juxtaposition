@@ -22,11 +22,15 @@ function bearingDeg(from, to) {
 const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const compass = (deg) => COMPASS[Math.round(deg / 45) % 8];
 
+/** Seconds Overpass may spend on a query: more for bigger areas (they return far more elements). */
+const timeoutSec = (radiusM) => Math.min(60, 25 + Math.round((radiusM / 1000) * 8));
+
 function buildQuery(lat, lng, radiusM, types) {
-  // One exact amenity=<type> clause per type: much cheaper for Overpass than a regex over all amenities.
+  // Exact amenity=<type> matches on nodes and ways (no regex, and no relations: those are costly to resolve
+  // and almost never hold restaurants).
   const around = `(around:${radiusM},${lat},${lng})`;
-  const clauses = types.map((t) => `nwr["amenity"="${t}"]["name"]${around};`).join('');
-  return `[out:json][timeout:25];(${clauses});out center tags;`;
+  const clauses = types.map((t) => `node["amenity"="${t}"]["name"]${around};way["amenity"="${t}"]["name"]${around};`).join('');
+  return `[out:json][timeout:${timeoutSec(radiusM)}];(${clauses});out center tags;`;
 }
 
 function address(t) {
@@ -88,9 +92,9 @@ async function attempt(url, query, fetchImpl, signal) {
  * ask the next one too, and so on. The first good answer wins and the rest are cancelled.
  * Worst case is roughly HEDGE_MS * (mirrors - 1) + PER_MIRROR_MS instead of mirrors * PER_MIRROR_MS.
  */
-function queryOverpass(query, fetchImpl) {
+function queryOverpass(query, fetchImpl, perMirrorDefaultMs = 25_000) {
   const hedgeMs = num('OVERPASS_HEDGE_MS', 4000);
-  const perMirrorMs = num('OVERPASS_TIMEOUT_MS', 25_000);
+  const perMirrorMs = num('OVERPASS_TIMEOUT_MS', perMirrorDefaultMs);
   return new Promise((resolve, reject) => {
     if (!ENDPOINTS.length) return reject(new UpstreamError('no Overpass endpoint configured'));
     const errors = [];
@@ -152,7 +156,7 @@ async function nearby(params, { fetchImpl = globalThis.fetch, now = Date.now } =
   if (hit && now() - hit.at < CACHE_MS) places = hit.elements;
   else {
     if (!inflight.has(key)) {
-      inflight.set(key, queryOverpass(buildQuery(lat, lng, radiusM, types), fetchImpl)
+      inflight.set(key, queryOverpass(buildQuery(lat, lng, radiusM, types), fetchImpl, (timeoutSec(radiusM) + 5) * 1000)
         .then((j) => { cache.set(key, { at: now(), elements: j.elements || [] }); if (cache.size > 200) cache.delete(cache.keys().next().value); return j.elements || []; })
         .finally(() => inflight.delete(key)));
     }
@@ -185,4 +189,4 @@ async function diagnose({ fetchImpl = globalThis.fetch, timeoutMs = 10_000 } = {
   }));
 }
 
-module.exports = { diagnose, nearby, normalise, bearingDeg, compass, buildQuery, BadRequest, UpstreamError, _cache: cache };
+module.exports = { diagnose, timeoutSec, nearby, normalise, bearingDeg, compass, buildQuery, BadRequest, UpstreamError, _cache: cache };
