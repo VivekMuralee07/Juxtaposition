@@ -4,8 +4,10 @@ import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
-import android.os.Build
+import android.os.Bundle
+import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -20,17 +22,30 @@ import kotlinx.coroutines.withContext
 
 enum class ViewMode { LIST, RADAR }
 
+/**
+ * One list is fetched for a 1 km circle around the user. Everything on screen (500 m / 1 km, type, search,
+ * open now, veg, distances, directions) is derived from that list on the phone, so changing a chip never touches
+ * the network and never empties the screen. As the user walks, distances update live and the list is refreshed
+ * quietly in the background after about 200 m of movement.
+ */
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
     private val cache = PlacesCache(app.getSharedPreferences("places_cache", Context.MODE_PRIVATE))
+    private val locationManager = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private var loadSeq = 0
+    private var fetching = false
+    private var lastAttemptMs = 0L
+    private var fetchedAt: Pair<Double, Double>? = null
+    private var updatesRunning = false
 
     var apiUrl by mutableStateOf(prefs.getString("apiUrl", BuildConfig.DEFAULT_API_URL)!!); private set
+    /** The user's live position. */
     var origin by mutableStateOf<Pair<Double, Double>?>(null); private set
-    var radiusM by mutableIntStateOf(5000); private set
+    var radiusM by mutableIntStateOf(LiveUpdates.MAX_RADIUS_M); private set
     var typeFilter by mutableStateOf<String?>(null); private set
-    var places by mutableStateOf<List<Place>>(emptyList()); private set
-    var selected by mutableStateOf<Place?>(null); private set
+    /** The fetched list; each place's distance/direction is re-measured from [origin] in [visiblePlaces]. */
+    private var places by mutableStateOf<List<Place>>(emptyList())
+    private var selectedId by mutableStateOf<String?>(null)
     var viewMode by mutableStateOf(ViewMode.RADAR); private set
     var query by mutableStateOf(""); private set
     var openNow by mutableStateOf(false); private set
@@ -38,74 +53,112 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var loading by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     var locationDenied by mutableStateOf(false); private set
-    /** Shown when the list comes from the phone's saved copy because live data was unavailable. */
+    /** Shown when the list is a saved copy, or a background refresh failed. */
     var notice by mutableStateOf<String?>(null); private set
 
-    /** Places after the type / search / open-now / veg filters. */
+    val hasData: Boolean get() = places.isNotEmpty()
+
+    /** What the screens show: filters applied, distances measured from where the user is right now. */
     val visiblePlaces: List<Place>
         get() {
-            val q = query.trim().lowercase()
-            val now = java.time.LocalDateTime.now()
-            return places.filter { p ->
-                (typeFilter == null || p.type == typeFilter) &&
-                    (q.isEmpty() || p.name.lowercase().contains(q) || (p.cuisine?.lowercase()?.contains(q) == true)) &&
-                    (!vegOnly || p.vegetarian != null) &&
-                    (!openNow || p.hoursStatus(now) !is HoursStatus.Closed) // most OSM places list no hours, so "open now" keeps them (they are labelled "Hours not listed")
-            }
+            val here = origin ?: return emptyList()
+            return PlaceFilters.visible(
+                PlaceFilters.relocate(places, here.first, here.second),
+                radiusM / 1000.0, typeFilter, query, vegOnly, openNow,
+            )
         }
+
+    val selected: Place? get() = selectedId?.let { id -> visiblePlaces.firstOrNull { it.id == id } }
 
     fun saveApiUrl(url: String) {
         apiUrl = url.trim().ifEmpty { BuildConfig.DEFAULT_API_URL }
         prefs.edit().putString("apiUrl", apiUrl).apply()
-        load()
+        load(userInitiated = true)
     }
 
     fun onPermissionResult(granted: Boolean) {
         locationDenied = !granted
-        if (granted) locate()
+        if (granted) { locate(); startLocationUpdates() }
     }
 
-    fun setRadius(m: Int) { radiusM = m; load() }
-    fun updateTypeFilter(t: String?) { typeFilter = t; selected = null }
+    // Local-only changes: no network, so the list can never disappear because of them.
+    fun setRadius(m: Int) { radiusM = m.coerceAtMost(LiveUpdates.MAX_RADIUS_M); selectedId = null }
+    fun updateTypeFilter(t: String?) { typeFilter = t; selectedId = null }
     fun updateViewMode(m: ViewMode) { viewMode = m }
-    fun updateQuery(q: String) { query = q; selected = null }
-    fun updateOpenNow(on: Boolean) { openNow = on; selected = null }
-    fun updateVegOnly(on: Boolean) { vegOnly = on; selected = null }
-    fun select(p: Place?) { selected = p }
+    fun updateQuery(q: String) { query = q; selectedId = null }
+    fun updateOpenNow(on: Boolean) { openNow = on; selectedId = null }
+    fun updateVegOnly(on: Boolean) { vegOnly = on; selectedId = null }
+    fun select(p: Place?) { selectedId = p?.id }
     fun dismissError() { error = null }
 
+    // ---- location ----
+
+    /** One quick fix (used on launch and by the refresh button); also forces a fresh fetch. */
     @SuppressLint("MissingPermission")
     fun locate() {
         val ctx = getApplication<Application>()
-        val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         loading = true; error = null
         fun fallback() {
-            val last = lm.getProviders(true).mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }.maxByOrNull { it.time }
-            if (last != null) onLocation(last)
+            val last = locationManager.getProviders(true).mapNotNull { runCatching { locationManager.getLastKnownLocation(it) }.getOrNull() }.maxByOrNull { it.time }
+            if (last != null) { origin = last.latitude to last.longitude; load(userInitiated = true) }
             else { loading = false; error = "Couldn't get your location. Turn on location services and tap Refresh." }
         }
-        val provider = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).firstOrNull { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
-        if (provider != null && Build.VERSION.SDK_INT >= 30) {
+        val provider = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).firstOrNull { runCatching { locationManager.isProviderEnabled(it) }.getOrDefault(false) }
+        if (provider != null && android.os.Build.VERSION.SDK_INT >= 30) {
             runCatching {
-                lm.getCurrentLocation(provider, null, ContextCompat.getMainExecutor(ctx)) { loc -> if (loc != null) onLocation(loc) else fallback() }
+                locationManager.getCurrentLocation(provider, null, ContextCompat.getMainExecutor(ctx)) { loc ->
+                    if (loc != null) { origin = loc.latitude to loc.longitude; load(userInitiated = true) } else fallback()
+                }
             }.onFailure { fallback() }
         } else fallback()
     }
 
-    private fun onLocation(loc: Location) {
-        origin = loc.latitude to loc.longitude
-        load()
+    private val listener = object : LocationListener {
+        override fun onLocationChanged(location: Location) = onLiveFix(location)
+        @Deprecated("Deprecated in Java") override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
     }
+
+    /** Follow the user while the app is on screen (called from onStart). */
+    @SuppressLint("MissingPermission")
+    fun startLocationUpdates() {
+        if (updatesRunning) return
+        updatesRunning = true
+        for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+            runCatching {
+                if (locationManager.isProviderEnabled(p)) locationManager.requestLocationUpdates(p, 5_000L, 10f, listener, Looper.getMainLooper())
+            }
+        }
+    }
+
+    /** Stop following (called from onStop) so the GPS is not left running in the background. */
+    fun stopLocationUpdates() {
+        if (!updatesRunning) return
+        updatesRunning = false
+        runCatching { locationManager.removeUpdates(listener) }
+    }
+
+    override fun onCleared() { stopLocationUpdates() }
+
+    private fun onLiveFix(loc: Location) {
+        if (!LiveUpdates.accurateEnough(if (loc.hasAccuracy()) loc.accuracy else null)) return
+        val here = loc.latitude to loc.longitude
+        origin = here // distances and directions on screen re-measure from this immediately
+        if (LiveUpdates.shouldRefetch(fetchedAt, here, lastAttemptMs, System.currentTimeMillis(), fetching)) load(userInitiated = false)
+    }
+
+    // ---- data ----
 
     /**
      * Asks OpenStreetMap straight from the phone AND your server at the same time; the first good answer wins.
      * (Shared cloud servers are often throttled by the public OpenStreetMap servers; a phone usually is not.)
      */
-    private suspend fun fetchFirst(lat: Double, lng: Double, radius: Int): Pair<NearbyResult?, List<String>> {
+    private suspend fun fetchFirst(lat: Double, lng: Double): Pair<NearbyResult?, List<String>> {
         val ch = Channel<Pair<String, Result<NearbyResult>>>(Channel.UNLIMITED)
         val jobs = listOf(
-            viewModelScope.launch { ch.send("OpenStreetMap" to runCatching { OverpassClient.nearby(lat, lng, radius) }) },
-            viewModelScope.launch { ch.send("server" to runCatching { withContext(Dispatchers.IO) { ApiClient(apiUrl).nearby(lat, lng, radius) } }) },
+            viewModelScope.launch { ch.send("OpenStreetMap" to runCatching { OverpassClient.nearby(lat, lng, LiveUpdates.MAX_RADIUS_M) }) },
+            viewModelScope.launch { ch.send("server" to runCatching { withContext(Dispatchers.IO) { ApiClient(apiUrl).nearby(lat, lng, LiveUpdates.MAX_RADIUS_M) } }) },
         )
         val problems = mutableListOf<String>()
         repeat(2) {
@@ -116,45 +169,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return null to problems
     }
 
-    fun load() {
+    /** `userInitiated` loads show errors; background refreshes (after moving) never clear or replace the list on failure. */
+    fun load(userInitiated: Boolean) {
         val (lat, lng) = origin ?: return
-        val radius = radiusM
         val mySeq = ++loadSeq
+        fetching = true
+        lastAttemptMs = System.currentTimeMillis()
         viewModelScope.launch {
-            loading = true; error = null; notice = null
-            val outcome = ProgressiveLoad.run(
-                radius,
-                fetch = { r -> fetchFirst(lat, lng, r) },
-                onStep = { r, res, isFinal ->
-                    if (mySeq == loadSeq) {
-                        places = res.places
-                        selected = selected?.let { s -> res.places.firstOrNull { it.id == s.id } }
-                        cache.save(cache.key(lat, lng, r), res)
-                        notice = if (isFinal) null else "Showing the nearest ${km(r)} while the wider area loads…"
-                    }
-                },
-            )
+            loading = true
+            if (userInitiated) error = null
+            val (fresh, problems) = fetchFirst(lat, lng)
             if (mySeq != loadSeq) return@launch // a newer request has started; ignore this one
-            if (!outcome.complete(radius)) {
-                val reached = outcome.reachedRadiusM
-                // best saved copy of the full radius (or the largest smaller one) from an earlier visit
-                val saved = ProgressiveLoad.steps(radius).reversed().firstNotNullOfOrNull { cache.load(cache.key(lat, lng, it)) }
-                val why = outcome.problems.firstOrNull()?.take(140).orEmpty()
-                when {
-                    reached != null && (saved == null || saved.result.radiusM <= reached) ->
-                        notice = "Showing the nearest ${km(reached)}. The wider area couldn't load ($why). Tap the location button to retry."
-                    saved != null -> {
-                        places = saved.result.places; selected = null
-                        notice = "Live data unavailable. Showing results saved ${agoText(System.currentTimeMillis() - saved.savedAt)} (${km(saved.result.radiusM)})."
+            val key = cache.key(lat, lng, LiveUpdates.MAX_RADIUS_M)
+            when {
+                fresh != null -> {
+                    places = fresh.places; fetchedAt = lat to lng; notice = null
+                    cache.save(key, fresh)
+                }
+                else -> {
+                    val saved = cache.load(key)
+                    when {
+                        places.isNotEmpty() -> notice = "Couldn't refresh the list (${problems.firstOrNull()?.take(100).orEmpty()}). Showing the previous one."
+                        saved != null -> {
+                            places = saved.result.places; fetchedAt = lat to lng
+                            notice = "Live data unavailable. Showing results saved ${agoText(System.currentTimeMillis() - saved.savedAt)}."
+                        }
+                        else -> error = "Couldn't load restaurants. " + problems.joinToString(" • ")
                     }
-                    else -> error = "Couldn't load restaurants. " + outcome.problems.joinToString(" • ")
                 }
             }
-            loading = false
+            loading = false; fetching = false
         }
     }
-
-    private fun km(m: Int) = if (m < 1000) "$m m" else (m / 1000.0).let { if (it == Math.floor(it)) "%.0f km".format(it) else "%.1f km".format(it) }
 
     private fun friendly(t: Throwable) = when (t) {
         is ApiException -> t.message ?: "Server error"

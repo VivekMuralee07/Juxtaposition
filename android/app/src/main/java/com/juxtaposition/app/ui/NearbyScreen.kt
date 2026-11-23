@@ -50,14 +50,14 @@ import com.juxtaposition.app.Place
 import com.juxtaposition.app.ViewMode
 import com.juxtaposition.app.hoursStatus
 
-private val RADII = listOf(500 to "500 m", 1000 to "1 km", 2000 to "2 km", 5000 to "5 km")
+private val RADII = listOf(500 to "500 m", 1000 to "1 km")
 private val TYPES = listOf<Pair<String?, String>>(null to "All", "restaurant" to "🍽️  Restaurants", "fast_food" to "🍔  Fast food", "cafe" to "☕  Cafes")
 
 @Composable
 fun NearbyScreen(vm: AppViewModel) {
     NearbyContent(
         places = vm.visiblePlaces, selected = vm.selected, radiusM = vm.radiusM, typeFilter = vm.typeFilter,
-        viewMode = vm.viewMode, loading = vm.loading, openNow = vm.openNow, vegOnly = vm.vegOnly,
+        viewMode = vm.viewMode, loading = vm.loading && !vm.hasData, openNow = vm.openNow, vegOnly = vm.vegOnly,
         onRadius = vm::setRadius, onType = vm::updateTypeFilter, onMode = vm::updateViewMode, onSelect = vm::select,
         onOpenNow = vm::updateOpenNow, onVegOnly = vm::updateVegOnly,
     )
@@ -362,10 +362,10 @@ private fun EmptyState() {
     Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text("🧭", fontSize = 56.sp)
         Spacer(Modifier.height(12.dp))
-        Text("Nothing around here yet", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+        Text("Nothing matches here", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
         Spacer(Modifier.height(6.dp))
         Text(
-            "Check the location above is where you really are, try a bigger radius, or tap the location button to refresh. OpenStreetMap coverage varies by area.",
+            "Try 1 km, clear a filter, or tap the location button to refresh. OpenStreetMap coverage varies by area.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

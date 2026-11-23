@@ -20,6 +20,16 @@ class MainActivity : ComponentActivity() {
 
     private fun hasLocationPermission() = perms.any { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
 
+    override fun onStart() {
+        super.onStart()
+        if (hasLocationPermission()) vm.startLocationUpdates() // follow the user while the app is on screen
+    }
+
+    override fun onStop() {
+        super.onStop()
+        vm.stopLocationUpdates() // don't keep the GPS running in the background
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

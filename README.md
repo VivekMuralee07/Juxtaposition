@@ -1,6 +1,6 @@
 # Nearby Eats (Juxtaposition)
 
-Shows the restaurants, fast-food places and cafes around your **current location**, with the **distance and direction** to each, as a **list** or a **radar map**, with whether each place is **open right now** (and when it closes or next opens). The list is grouped into 500 m bands (Within 500 m, 500 m – 1 km, 1 – 1.5 km, … up to 5 km). Search by name or cuisine, filter by open now / veg / type ("Open now" hides only places known to be closed; places with no hours listed stay, labelled "Hours not listed"), and tap a place for details, directions, call and website.
+Shows the restaurants, fast-food places and cafes around your **current location**, with the **distance and direction** to each, as a **list** or a **radar map**, with whether each place is **open right now** (and when it closes or next opens). The list is grouped into 500 m bands (Within 500 m, 500 m – 1 km). Search by name or cuisine, filter by open now / veg / type ("Open now" hides only places known to be closed; places with no hours listed stay, labelled "Hours not listed"), and tap a place for details, directions, call and website.
 
 ```
 android/   Kotlin + Jetpack Compose app  (-> APK)
@@ -12,11 +12,12 @@ render.yaml  Render blueprint (starter plan)
 ## How it works
 1. The app asks for location permission and reads your position.
 2. It asks **OpenStreetMap** (Overpass API; free, no key) in two ways at once, and the first good answer wins: directly from the phone (its own connection is rarely throttled), and via `GET /api/nearby?lat=&lng=&radius=` on your server (which caches for 5 minutes and is shared by all your users). Several OpenStreetMap mirrors are tried with staggered starts.
-3. Wide searches load in steps (1 km, then 2 km, then the full radius): the nearest places appear straight away and each wider step swaps in when it arrives. If a wider step fails, the closer results stay on screen with a note instead of an error.
+3. One list is fetched for a 1 km circle around you. The **500 m / 1 km** chips, type, search, open-now and veg are filters over that list on the phone, so changing them never reloads or empties the screen.
+4. **It follows you**: while the app is open, distances and directions re-measure live as you walk, and after about 200 m of movement the list refreshes quietly in the background (the current list stays on screen; a failed refresh only shows a note). Rough location fixes (worse than 150 m) are ignored, and GPS updates stop when the app is closed or in the background.
    Distance (straight-line) and compass bearing are computed per place; results are sorted by distance.
    The phone saves the last good list for each area, so if both routes fail it shows the saved copy with a notice instead of nothing.
-4. The app plots them: you at the centre, distance rings around you, N marker; places closed right now are faded.
-5. Open/closed status is worked out on the phone from OpenStreetMap's `opening_hours` tag (common formats like `Mo-Sa 11:00-23:00; Su off`, overnight hours and 24/7). Public holidays are ignored, anything more exotic shows no status, and many places have no hours at all, so treat it as a guide.
+5. The app plots them: you at the centre, distance rings around you, N marker; places closed right now are faded.
+6. Open/closed status is worked out on the phone from OpenStreetMap's `opening_hours` tag (common formats like `Mo-Sa 11:00-23:00; Su off`, overnight hours and 24/7). Public holidays are ignored, anything more exotic shows no status, and many places have no hours at all, so treat it as a guide.
 
 **Data caveats:** OpenStreetMap is community-maintained, so coverage is good in big cities and patchier elsewhere, and it has **no ratings or menu prices**. Distances are straight-line (the detail card shows an approximate walking time). Map data (c) OpenStreetMap contributors. The public Overpass servers have fair-use limits; the server caches and identifies itself, but for heavy use run your own Overpass instance (`OVERPASS_URLS`).
 
