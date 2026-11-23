@@ -12,8 +12,8 @@ android {
         applicationId = "com.juxtaposition.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "1.7.0"
+        versionCode = 11
+        versionName = "1.8.0"
         val apiUrl = (project.findProperty("apiUrl") as String?) ?: "https://juxtaposition-api.onrender.com"
         buildConfigField("String", "DEFAULT_API_URL", "\"$apiUrl\"")
     }
@@ -62,6 +62,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.core:core-splashscreen:1.0.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }

@@ -14,8 +14,11 @@ render.yaml  Render blueprint
 - **Open now** hides only places known to be closed. Most OpenStreetMap places list no opening hours; those stay and are labelled "Hours not listed".
 - **Radar**: you are at the centre with distance rings. **Heading up** (default) rotates the view so the top is where you face (uses the compass; a beam shows your facing). Tap the compass button for **North up**. Closed places are faded. Phones without a compass use North up automatically. The app is portrait-only.
 - **Follows you**: distances and directions re-measure live as you walk; after about 200 m the list refreshes quietly in the background (the current list stays; a failed refresh only shows a note). GPS and compass run only while the app is on screen.
+- **Food-specific icons** (🍛 biryani, 🍕 pizza, 🍔 burgers, ☕ coffee, 🥟 momos, …) chosen from the cuisine tag, or the place's name when there is no cuisine.
+- **Radar rings are walking minutes** ("5 min · 10 min · 1 km · 16 min"; about 5 km/h with a 1.3x street detour). **Pinch or double-tap to zoom** (up to 6x; the rings rescale), tap a place for a light haptic tick.
+- List: **pull down to refresh**; items slide into place when you change a filter or walk past one; List/Radar cross-fade. Splash screen on launch and a **themed app icon** for Android 13+.
 - Tap a place for details: distance, direction, walking time, address, hours, and Directions / Call / Website buttons.
-- A **data line** at the bottom says where the list came from (an OpenStreetMap server via the phone, or your server, or a saved copy), how long it took, how fresh it is, and the GPS accuracy.
+- A short **data line** at the bottom ("Updated 3 min ago • GPS ±12 m"); tap it for the full detail: which source answered (an OpenStreetMap server via the phone, or your server, or a saved copy), how long it took, and the location accuracy.
 
 ## How the data is loaded
 1. One list is fetched for a 1 km circle around you from **OpenStreetMap** (Overpass API; free, no key), in two ways at once; the first good answer wins: **directly from the phone** (its own connection is rarely throttled) and via **your server** (`/api/nearby`, which caches for 5 minutes). Several Overpass mirrors are tried with staggered starts; an overloaded mirror's "empty list + remark" reply counts as a failure, never as "no places".

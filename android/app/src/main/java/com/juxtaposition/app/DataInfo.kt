@@ -19,6 +19,14 @@ object DataLine {
         return parts.joinToString(" • ").ifEmpty { null }
     }
 
+    /** A short version for the footer: "Updated 3 min ago • GPS ±12 m". Tap the footer for [describe]. */
+    fun short(info: DataInfo?, fix: String?, nowMs: Long): String? {
+        val parts = mutableListOf<String>()
+        info?.let { parts += if (it.saved) "Saved copy from ${agoText(nowMs - it.atMs)}" else "Updated ${agoText(nowMs - it.atMs)}" }
+        fix?.let { parts += it }
+        return parts.joinToString(" • ").ifEmpty { null }
+    }
+
     /** "GPS ±12 m", "Network ±300 m" or null when there is no fix yet. */
     fun fix(provider: String?, accuracyM: Float?): String? {
         val name = when (provider) { "gps" -> "GPS"; "network" -> "Network"; "fused" -> "Fused"; null -> return null; else -> provider.replaceFirstChar { it.uppercase() } }

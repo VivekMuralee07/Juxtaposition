@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -20,7 +21,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -31,6 +34,8 @@ import com.juxtaposition.app.Place
 import com.juxtaposition.app.HoursStatus
 import com.juxtaposition.app.hoursStatus
 import com.juxtaposition.app.RadarMath
+import com.juxtaposition.app.RadarZoom
+import com.juxtaposition.app.RingScale
 
 // The radar is an "instrument panel": always dark so pins glow, whatever the app theme.
 private val PanelTop = Color(0xFF1C2633)
@@ -51,8 +56,12 @@ fun RadarView(
     onSelect: (Place?) -> Unit, modifier: Modifier = Modifier, animate: Boolean = true,
     /** Direction the user faces (degrees from true north) when it should be "up"; null = north is up. */
     facingDeg: Float? = null, showFacingCone: Float? = null,
+    /** Pinch / double-tap zoom, hoisted so the card can show a reset button. 1 = the whole selected radius. */
+    zoom: Float = 1f, onZoomChange: (Float) -> Unit = {},
 ) {
     val measurer = rememberTextMeasurer()
+    val haptic = LocalHapticFeedback.current
+    val zoomNow by rememberUpdatedState(zoom)
     val radiusKm = radiusM / 1000.0
     val rotation by rememberUpdatedState(facingDeg ?: 0f) // read at draw / tap time, so taps always match what is drawn
     val closedIds = remember(places) {
@@ -68,7 +77,7 @@ fun RadarView(
 
     data class Spot(val place: Place, val x: Float, val y: Float)
     fun layout(w: Float, h: Float): List<Spot> {
-        val pxPerKm = (minOf(w, h) / 2f - 34f) / radiusKm
+        val pxPerKm = (minOf(w, h) / 2f - 34f) / (radiusKm / zoomNow)
         return places.map {
             val (px, py) = RadarMath.toPlane(it.bearingDeg - rotation.toDouble(), it.distanceKm)
             val (sx, sy) = RadarMath.project(px, py, pxPerKm, w / 2f, h / 2f)
@@ -80,32 +89,42 @@ fun RadarView(
         modifier
             .fillMaxSize()
             .pointerInput(places, radiusM) {
-                detectTapGestures { tap ->
-                    val hit = layout(size.width.toFloat(), size.height.toFloat()).asReversed()
-                        .minByOrNull { (it.x - tap.x) * (it.x - tap.x) + (it.y - tap.y) * (it.y - tap.y) }
-                    val close = hit != null && (hit.x - tap.x) * (hit.x - tap.x) + (hit.y - tap.y) * (hit.y - tap.y) < 52f * 52f
-                    onSelect(if (close) hit!!.place else null)
-                }
+                detectTapGestures(
+                    onDoubleTap = { onZoomChange(RadarZoom.toggle(zoomNow)) },
+                    onTap = { tap ->
+                        val hit = layout(size.width.toFloat(), size.height.toFloat()).asReversed()
+                            .minByOrNull { (it.x - tap.x) * (it.x - tap.x) + (it.y - tap.y) * (it.y - tap.y) }
+                        val close = hit != null && (hit.x - tap.x) * (hit.x - tap.x) + (hit.y - tap.y) * (hit.y - tap.y) < 52f * 52f
+                        if (close) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) // a light tick
+                        onSelect(if (close) hit!!.place else null)
+                    },
+                )
             }
+            .pointerInput(Unit) { detectTransformGestures { _, _, gestureZoom, _ -> onZoomChange(RadarZoom.apply(zoomNow, gestureZoom)) } }
     ) {
         val w = size.width
         val h = size.height
         val cx = w / 2f
         val cy = h / 2f
-        val pxPerKm = (minOf(w, h) / 2f - 34f) / radiusKm
-        val outer = (radiusKm * pxPerKm).toFloat()
+        val visibleRadiusKm = radiusKm / zoomNow
+        val pxPerKm = (minOf(w, h) / 2f - 34f) / visibleRadiusKm
+        val outer = (visibleRadiusKm * pxPerKm).toFloat()
 
         drawRect(Brush.verticalGradient(listOf(PanelTop, PanelBottom)))
         drawRect(Brush.radialGradient(listOf(Accent.copy(alpha = 0.10f), Color.Transparent), Offset(cx, cy), minOf(w, h) * 0.6f))
 
-        // soft filled disc + rings
+        // soft filled disc + rings, labelled in walking minutes; the outer ring shows distance and time
         drawCircle(Color.White.copy(alpha = 0.035f), outer, Offset(cx, cy))
-        for (f in listOf(0.25f, 0.5f, 0.75f, 1f)) {
-            val r = (radiusKm * f * pxPerKm).toFloat()
-            drawCircle(Ring, r, Offset(cx, cy), style = Stroke(width = if (f == 1f) 2.5f else 1.5f))
-            val label = (radiusKm * f).let { if (it < 1) "${Math.round(it * 1000)} m" else "%.1f km".format(it) }
-            val lay = measurer.measure(label, TextStyle(fontSize = 10.sp, color = RingLabel))
-            drawText(lay, topLeft = Offset(cx - lay.size.width / 2f, cy + r + 3f))
+        val diag = 0.7071f
+        for (ring in RingScale.rings(visibleRadiusKm * 1000)) {
+            val rr = (ring.distanceKm * pxPerKm).toFloat()
+            drawCircle(Ring, rr, Offset(cx, cy), style = Stroke(width = if (ring.isBoundary) 2.5f else 1.5f))
+            // labels sit on the lower-left diagonal, away from the N/E/S/W letters, on a small backing so the ring line doesn't cross them
+            val lay = measurer.measure(ring.label, TextStyle(fontSize = 10.sp, color = RingLabel))
+            val lx = cx - rr * diag - lay.size.width / 2f
+            val ly = cy + rr * diag - lay.size.height / 2f
+            drawRoundRect(PanelBottom.copy(alpha = 0.85f), Offset(lx - 5f, ly - 1f), Size(lay.size.width + 10f, lay.size.height + 2f), CornerRadius(8f))
+            drawText(lay, topLeft = Offset(lx, ly))
         }
         drawLine(Ring.copy(alpha = 0.5f), Offset(cx - outer, cy), Offset(cx + outer, cy), strokeWidth = 1f)
 
@@ -120,7 +139,7 @@ fun RadarView(
 
         // compass letters sit on the outer ring and rotate with the view; N is highlighted
         for ((label, deg) in listOf("N" to 0.0, "E" to 90.0, "S" to 180.0, "W" to 270.0)) {
-            val (lx, ly) = RadarMath.toPlane(deg - rotation, radiusKm)
+            val (lx, ly) = RadarMath.toPlane(deg - rotation, visibleRadiusKm)
             val (sx, sy) = RadarMath.project(lx, ly, pxPerKm, cx, cy)
             val isN = label == "N"
             if (isN) drawLine(NorthRed.copy(alpha = 0.35f), Offset(cx, cy), Offset(sx, sy), strokeWidth = 1.5f)

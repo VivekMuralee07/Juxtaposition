@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.LaunchedEffect
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.juxtaposition.app.ui.AppRoot
 import com.juxtaposition.app.ui.JuxtaTheme
 
@@ -33,6 +34,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen() // launch screen; must come before super.onCreate
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
