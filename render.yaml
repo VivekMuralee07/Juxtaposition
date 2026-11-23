@@ -12,20 +12,3 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
-      - key: PROVIDER_MODE
-        value: simulated     # switch to "live" once you add a real provider (see README)
-      # --- ONDC live prices (optional; see README "ONDC integration"). Set PROVIDER_MODE=hybrid to enable. ---
-      - key: ONDC_ENV                  # staging | preprod | prod
-        value: staging
-      - key: ONDC_SUBSCRIBER_ID        # your registered subscriber id (domain)
-        sync: false
-      - key: ONDC_UK_ID                # unique key id issued at registration
-        sync: false
-      - key: ONDC_SIGNING_PRIVATE_KEY
-        sync: false
-      - key: ONDC_ENCRYPTION_PRIVATE_KEY
-        sync: false
-      - key: ONDC_REGISTRY_ENC_PUBLIC_KEY   # registry's public key for your ONDC_ENV (from ONDC docs)
-        sync: false
-      - key: ONDC_REQUEST_ID           # request_id from the registry subscribe call (site verification)
-        sync: false

@@ -1,13 +1,15 @@
 {
-  "name": "juxtaposition-backend",
+  "name": "nearby-eats-backend",
   "version": "1.0.0",
-  "description": "Price + ETA comparison API for food delivery apps (Swiggy, Zomato, Magicpin, ONDC)",
+  "description": "Nearby restaurants API (OpenStreetMap / Overpass) with caching and diagnostics",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.js"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "express": "^4.21.2"
   },

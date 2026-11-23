@@ -22,12 +22,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        vm.onForeground() // compass (heading-up radar)
         if (hasLocationPermission()) vm.startLocationUpdates() // follow the user while the app is on screen
     }
 
     override fun onStop() {
         super.onStop()
-        vm.stopLocationUpdates() // don't keep the GPS running in the background
+        vm.onBackground()
+        vm.stopLocationUpdates() // don't keep the GPS or compass running in the background
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

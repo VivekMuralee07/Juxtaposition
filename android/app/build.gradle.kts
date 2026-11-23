@@ -12,19 +12,36 @@ android {
         applicationId = "com.juxtaposition.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "1.6.0"
+        versionCode = 10
+        versionName = "1.7.0"
         val apiUrl = (project.findProperty("apiUrl") as String?) ?: "https://juxtaposition-api.onrender.com"
         buildConfigField("String", "DEFAULT_API_URL", "\"$apiUrl\"")
     }
 
+    // Release signing: the keystore is NEVER in the repo. Provide it through environment variables
+    // (KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD), locally or as GitHub Actions secrets.
+    // Without them the build falls back to the debug key, which is fine for testing but must not be distributed:
+    // Android only updates an installed app when the new APK has the same signing key.
+    val keystorePath = System.getenv("KEYSTORE_PATH")
+    val haveReleaseKey = keystorePath != null && file(keystorePath).exists()
+    signingConfigs {
+        if (haveReleaseKey) {
+            create("release") {
+                storeFile = file(keystorePath!!)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS") ?: "nearbyeats"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: System.getenv("KEYSTORE_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the APK installs directly (sideloading).
-            // For Play Store, replace with your own release keystore.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (haveReleaseKey) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
+    }
+    if (!haveReleaseKey) {
+        logger.warn("WARNING: no release keystore (KEYSTORE_PATH). The release APK is signed with the DEBUG key: do not distribute it.")
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {

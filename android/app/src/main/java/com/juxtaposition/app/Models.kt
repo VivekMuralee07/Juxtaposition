@@ -14,7 +14,8 @@ data class Place(
     val walkMinutes get() = Math.max(1, Math.round(distanceKm * 1.3 / 5.0 * 60).toInt())
 }
 
-data class NearbyResult(val radiusM: Int, val places: List<Place>)
+/** `via` = which source answered: an OpenStreetMap mirror's host name (asked from the phone) or "server". Null for saved copies. */
+data class NearbyResult(val radiusM: Int, val places: List<Place>, val via: String? = null)
 
 private fun JSONObject.str(key: String): String? = if (isNull(key)) null else optString(key).takeIf { it.isNotEmpty() }
 private fun JSONArray.objects() = (0 until length()).map { getJSONObject(it) }
