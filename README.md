@@ -4,9 +4,7 @@ Shows the restaurants, fast-food places and cafes around your **current location
 
 ```
 android/   Kotlin + Jetpack Compose app  (-> APK)
-backend/   Node/Express API              (-> Render; optional backup route + diagnostics)
 dist/      NearbyEats.apk (signed release build, Android 8+)
-render.yaml  Render blueprint
 ```
 
 ## What it does
@@ -25,11 +23,11 @@ render.yaml  Render blueprint
 - Tap a place for details: distance, direction, walking time, address, hours, and **Directions** (starts walking navigation in Google Maps if installed, otherwise opens any map app's pin, otherwise the browser), **Call**, **Website** and **Share** (name, address, hours, phone, website and a map link; nothing about where *you* are). A link opens the place on **OpenStreetMap's editor** so missing hours or cuisine can be added (a free OpenStreetMap account is needed to save changes).
 - **Update check**: the app is installed by hand, so once a day it asks GitHub whether a newer release exists and shows an "Update available" banner with a Download button (Settings has the version and a manual "Check for updates").
 - **Screen readers**: the radar is a drawing, so it announces a spoken summary ("5 places within 1 kilometre. Nearest: Truffles, 180 metres north-east…") and points to the List view, which is fully readable.
-- A short **data line** at the bottom ("Updated 3 min ago • GPS ±12 m"); tap it for the full detail: which source answered (an OpenStreetMap server via the phone, or your server, or a saved copy), how long it took, and the location accuracy.
+- A short **data line** at the bottom ("Updated 3 min ago • GPS ±12 m"); tap it for the full detail: which source answered (an OpenStreetMap server, or a saved copy), how long it took, and the location accuracy.
 
 ## How the data is loaded
-1. One list is fetched for a 1 km circle around you from **OpenStreetMap** (Overpass API; free, no key), in two ways at once; the first good answer wins: **directly from the phone** (its own connection is rarely throttled) and via **your server** (`/api/nearby`, which caches for 5 minutes). Several Overpass mirrors are tried with staggered starts; an overloaded mirror's "empty list + remark" reply counts as a failure, never as "no places".
-2. The phone saves the last good list per area. If both routes fail it shows the saved copy with a notice instead of nothing.
+1. One list is fetched for a 1 km circle around you from **OpenStreetMap** (Overpass API; free, no key), **directly from the phone** (no server of your own is needed). Several Overpass mirrors are tried with staggered starts; an overloaded mirror's "empty list + remark" reply counts as a failure, never as "no places".
+2. The phone saves the last good list per area. If every mirror fails it shows the saved copy with a notice instead of nothing.
 3. Distances (straight-line), bearings and open/closed status are computed on the phone. Open/closed is read from OpenStreetMap's `opening_hours` tag (common formats such as `Mo-Sa 11:00-15:00,18:00-23:00; Su off`, overnight hours and 24/7; public holidays are ignored; anything fancier shows no status).
 
 **Data caveats:** OpenStreetMap is community-maintained: good coverage in big cities, patchier elsewhere, **no ratings or menu prices**. Hours may be out of date. Map data (c) OpenStreetMap contributors. The public Overpass servers have fair-use limits.
@@ -44,20 +42,8 @@ Android only updates an installed app if the new APK is signed with the **same k
 - Build locally with the key: `KEYSTORE_PATH=/path/release.jks KEYSTORE_PASSWORD=... KEY_ALIAS=nearbyeats ./gradlew assembleRelease`. Without `KEYSTORE_PATH` the build is debug-signed and prints a warning; never distribute that.
 - GitHub Actions: add repository secrets `KEYSTORE_BASE64` (the keystore, base64-encoded), `KEYSTORE_PASSWORD` and `KEY_ALIAS` (`nearbyeats`). CI then builds a signed APK, uploads it as an artifact, and on `main` publishes a release `v<versionName>` (bump `versionName`/`versionCode` in `android/app/build.gradle.kts` for each release).
 
-## Backend (optional) on Render
-The app works without it (the phone asks OpenStreetMap itself); the server is a shared cache and a backup route, and Settings has a switch to stop using it. To see whether it adds anything, open `<your server URL>/api/diag`: if every mirror shows `timeout` or an error from the server, the server cannot reach OpenStreetMap either and the phone does all the work. Render dashboard -> **New + -> Blueprint** -> select this repo (Root Directory `backend`, Build `npm ci`, Start `npm start`). Then in the app: **Settings (gear) -> Server URL** -> `https://<service>.onrender.com`.
-
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/health` | liveness; includes the deployed commit |
-| GET | `/api/nearby` | `lat`, `lng` (required), `radius` metres 200-5000 (default 1500), `types` = `restaurant,fast_food,cafe` |
-| GET | `/api/diag` | tests whether this server can reach each OpenStreetMap mirror (open in a browser to debug "data source is busy") |
-
-Local dev: `cd backend && npm i && npm start`; in the emulator use `http://10.0.2.2:3000` as the Server URL.
-
 ## Build and test
 JDK 17+, Android SDK (platform 34, build-tools 34.0.0):
 ```
 cd android && ./gradlew testDebugUnitTest assembleRelease   # -> app/build/outputs/apk/release/app-release.apk
-cd backend && npm test
 ```

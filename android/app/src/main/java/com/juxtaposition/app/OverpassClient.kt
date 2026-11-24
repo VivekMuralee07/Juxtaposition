@@ -138,3 +138,6 @@ object OverpassClient {
         return NearbyResult(radiusM, out.sortedBy { it.distanceKm }.take(MAX_RESULTS))
     }
 }
+
+/** Raised when no OpenStreetMap mirror gave a usable answer. */
+class ApiException(message: String) : Exception(message)

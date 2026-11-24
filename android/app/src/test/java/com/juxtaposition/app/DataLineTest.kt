@@ -11,11 +11,6 @@ class DataLineTest {
         assertEquals("OpenStreetMap via overpass-api.de (phone) • 2.1 s • updated 3 min ago • GPS ±12 m", DataLine.describe(info, "GPS ±12 m", NOW))
     }
 
-    @Test fun serverSource() {
-        val info = DataInfo("server", 850, NOW - 10_000, saved = false)
-        assertEquals("OpenStreetMap via your server • 0.9 s • updated just now", DataLine.describe(info, null, NOW))
-    }
-
     @Test fun savedCopyHasNoTimingOrSource() {
         val info = DataInfo(null, null, NOW - 2 * 3_600_000L, saved = true)
         assertEquals("Saved copy from 2 h ago • Network ±300 m", DataLine.describe(info, "Network ±300 m", NOW))
