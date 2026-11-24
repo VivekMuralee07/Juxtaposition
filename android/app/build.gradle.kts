@@ -12,10 +12,8 @@ android {
         applicationId = "com.juxtaposition.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "1.10.0"
-        val apiUrl = (project.findProperty("apiUrl") as String?) ?: "https://juxtaposition-api.onrender.com"
-        buildConfigField("String", "DEFAULT_API_URL", "\"$apiUrl\"")
+        versionCode = 14
+        versionName = "1.11.0"
     }
 
     // Release signing: the keystore is NEVER in the repo. Provide it through environment variables

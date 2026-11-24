@@ -10,7 +10,7 @@ object DataLine {
             info == null -> {}
             info.saved -> parts += "Saved copy from ${agoText(nowMs - info.atMs)}"
             else -> {
-                parts += "OpenStreetMap via " + if (info.via == "server") "your server" else "${info.via ?: "?"} (phone)"
+                parts += "OpenStreetMap via " + "${info.via ?: "?"} (phone)"
                 info.tookMs?.let { parts += "%.1f s".format(it / 1000.0) }
                 parts += "updated ${agoText(nowMs - info.atMs)}"
             }

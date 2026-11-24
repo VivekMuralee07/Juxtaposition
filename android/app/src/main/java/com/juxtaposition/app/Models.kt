@@ -14,7 +14,7 @@ data class Place(
     val walkMinutes get() = Walking.minutes(distanceKm)
 }
 
-/** `via` = which source answered: an OpenStreetMap mirror's host name (asked from the phone) or "server". Null for saved copies. */
+/** `via` = which source answered: an OpenStreetMap mirror's host name (asked from the phone). Null for saved copies. */
 data class NearbyResult(val radiusM: Int, val places: List<Place>, val via: String? = null)
 
 private fun JSONObject.str(key: String): String? = if (isNull(key)) null else optString(key).takeIf { it.isNotEmpty() }

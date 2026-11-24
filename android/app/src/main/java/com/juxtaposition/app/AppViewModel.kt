@@ -43,7 +43,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var compass: CompassSensor? = null
     private var declination = 0f
 
-    var apiUrl by mutableStateOf(prefs.getString("apiUrl", BuildConfig.DEFAULT_API_URL)!!); private set
     /** The user's live position. */
     var origin by mutableStateOf<Pair<Double, Double>?>(null); private set
     var radiusM by mutableIntStateOf(LiveUpdates.MAX_RADIUS_M); private set
@@ -67,8 +66,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var favorites by mutableStateOf(favoritesStore.load()); private set
     /** The place offered by "Pick for me" (so the details card can say so and offer another). */
     var pickedId by mutableStateOf<String?>(null); private set
-    /** Whether your own server is also asked for the list (the phone asks OpenStreetMap by itself either way). */
-    var useServer by mutableStateOf(prefs.getBoolean("useServer", true)); private set
     var loading by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     var locationDenied by mutableStateOf(false); private set
@@ -142,12 +139,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val selected: Place? get() = selectedId?.let { id -> visiblePlaces.firstOrNull { it.id == id } }
 
-    fun saveApiUrl(url: String) {
-        apiUrl = url.trim().ifEmpty { BuildConfig.DEFAULT_API_URL }
-        prefs.edit().putString("apiUrl", apiUrl).apply()
-        load(userInitiated = true)
-    }
-
     fun onPermissionResult(granted: Boolean) {
         locationDenied = !granted
         if (granted) { locate(); startLocationUpdates() }
@@ -185,7 +176,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         pickedId = pick.id
     }
 
-    fun updateUseServer(on: Boolean) { useServer = on; prefs.edit().putBoolean("useServer", on).apply() }
     fun dismissError() { error = null }
 
     private fun setOrigin(lat: Double, lng: Double) {
@@ -272,18 +262,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- data ----
 
-    /**
-     * Asks OpenStreetMap straight from the phone AND your server at the same time; the first good answer wins.
-     * (Shared cloud servers are often throttled by the public OpenStreetMap servers; a phone usually is not.)
-     */
+    /** Asks OpenStreetMap straight from the phone (several mirrors, staggered; the first good answer wins). */
     private suspend fun fetchFirst(lat: Double, lng: Double): Pair<NearbyResult?, List<String>> {
         val ch = Channel<Pair<String, Result<NearbyResult>>>(Channel.UNLIMITED)
         val jobs = mutableListOf(
             viewModelScope.launch { ch.send("OpenStreetMap" to runCatching { OverpassClient.nearby(lat, lng, LiveUpdates.MAX_RADIUS_M) }) },
         )
-        if (useServer) {
-            jobs += viewModelScope.launch { ch.send("server" to runCatching { withContext(Dispatchers.IO) { ApiClient(apiUrl).nearby(lat, lng, LiveUpdates.MAX_RADIUS_M) } }) }
-        }
         val problems = mutableListOf<String>()
         repeat(jobs.size) {
             val (source, result) = ch.receive()
@@ -332,9 +316,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun friendly(t: Throwable) = when (t) {
-        is ApiException -> t.message ?: "Server error"
-        is java.net.SocketTimeoutException -> "The server took too long to respond. Try again in a moment."
-        is java.io.IOException -> "Can't reach the server at $apiUrl. Check your connection or the server URL in settings."
+        is ApiException -> t.message ?: "OpenStreetMap is busy"
+        is java.net.SocketTimeoutException -> "OpenStreetMap took too long to respond. Try again in a moment."
+        is java.io.IOException -> "Can't reach OpenStreetMap. Check your connection."
         else -> t.message ?: "Something went wrong"
     }
 }
