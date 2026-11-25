@@ -98,7 +98,7 @@ fun NearbyScreen(vm: AppViewModel) {
         ),
         favoriteIds = vm.favoriteIds, pickedId = vm.pickedId, refreshing = vm.loading,
         dataLine = vm.dataLine(), dataLineShort = vm.dataLineShort(),
-        compass = CompassUi(vm.headingDeg, vm.headingUp, vm.compassAvailable, vm.compassLow),
+        compass = CompassUi(vm.headingDeg, vm.headingUp, vm.compassAvailable, vm.compassLow, explore = vm.exploring != null),
     )
 }
 
@@ -261,14 +261,14 @@ private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 /** Compass state for the radar. `headingUp` is the user's choice; it only takes effect when the sensor exists. */
-data class CompassUi(val headingDeg: Float? = null, val headingUp: Boolean = false, val available: Boolean = true, val lowAccuracy: Boolean = false)
+data class CompassUi(val headingDeg: Float? = null, val headingUp: Boolean = false, val available: Boolean = true, val lowAccuracy: Boolean = false, val explore: Boolean = false)
 
 @Composable
 private fun RadarCard(
     places: List<Place>, selected: Place?, radiusM: Int, onSelect: (Place?) -> Unit, animate: Boolean,
     compass: CompassUi, onToggleHeading: () -> Unit, onPick: (() -> Unit)?,
 ) {
-    val headingUp = compass.headingUp && compass.available
+    val headingUp = compass.headingUp && compass.available && !compass.explore
     val facing = if (headingUp) compass.headingDeg else null
     var zoom by remember { mutableFloatStateOf(1f) }
     androidx.compose.runtime.LaunchedEffect(radiusM) { zoom = 1f } // a new radius starts at the full view
@@ -276,12 +276,13 @@ private fun RadarCard(
         Box(Modifier.weight(1f).fillMaxWidth().clip(MaterialTheme.shapes.large)) {
             RadarView(
                 places, selected, radiusM, onSelect, Modifier.fillMaxSize(), animate,
-                facingDeg = facing, showFacingCone = compass.headingDeg.takeIf { compass.available && it != null },
+                facingDeg = facing, showFacingCone = compass.headingDeg.takeIf { compass.available && !compass.explore && it != null },
                 zoom = zoom, onZoomChange = { zoom = it },
             )
             Column(Modifier.align(Alignment.TopStart).padding(start = 14.dp, top = 12.dp).fillMaxWidth(0.72f)) {
                 Text(
                     when {
+                        compass.explore -> "North up • around the area you searched"
                         !compass.available -> "North up • this phone has no compass sensor"
                         headingUp && compass.headingDeg == null -> "Heading up • waiting for the compass…"
                         headingUp -> "Heading up • top = the way you face"
@@ -303,7 +304,7 @@ private fun RadarCard(
                 }
             }
             onPick?.let { PickButton(Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp), it) }
-            if (compass.available) {
+            if (compass.available && !compass.explore) {
                 FilledTonalIconButton(
                     onClick = onToggleHeading, Modifier.align(Alignment.TopEnd).padding(8.dp).size(40.dp),
                     colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = Color(0xFF2B394A), contentColor = if (headingUp) Color(0xFFFF8A4C) else Color(0xFFB7C4D6)),

@@ -12,7 +12,13 @@ import com.juxtaposition.app.UpdateInfo
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import com.juxtaposition.app.GeoResult
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +32,7 @@ import com.juxtaposition.app.AppViewModel
 fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
     var showSettings by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
+    var showExplore by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(vm.error) {
@@ -38,12 +45,26 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             Header(
-                subtitle = vm.origin?.let { "%.4f, %.4f  •  %d place%s".format(it.first, it.second, vm.visiblePlaces.size, if (vm.visiblePlaces.size == 1) "" else "s") }
+                subtitle = vm.origin?.let { o ->
+                    val n = "%d place%s".format(vm.visiblePlaces.size, if (vm.visiblePlaces.size == 1) "" else "s")
+                    vm.exploring?.let { "Near ${it.label.substringBefore(',')}  •  $n" } ?: "%.4f, %.4f  •  %s".format(o.first, o.second, n)
+                }
                     ?: "Finding your location…",
-                loading = vm.loading, onRefresh = onRequestLocation, onSettings = { showSettings = true },
+                loading = vm.loading, onRefresh = onRequestLocation, onSettings = { showSettings = true }, onExplore = { showExplore = true },
                 searchActive = searchOpen || vm.query.isNotEmpty(),
                 onSearch = { searchOpen = !searchOpen; if (!searchOpen) vm.updateQuery("") },
             )
+            vm.exploring?.let { spot ->
+                androidx.compose.material3.Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                ) {
+                    Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Exploring ${spot.label}", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 2)
+                        TextButton(onClick = { vm.locate() }) { Text("My location") }
+                    }
+                }
+            }
             vm.update?.let { info ->
                 val ctx = LocalContext.current
                 val inBrowser = { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }; Unit }
@@ -93,6 +114,13 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
         }
     }
 
+    if (showExplore) ExploreDialog(
+        results = vm.geoResults, busy = vm.geoBusy, message = vm.geoMessage,
+        onSearch = vm::searchArea,
+        onPick = { vm.explore(it); showExplore = false },
+        onDismiss = { showExplore = false; vm.clearAreaSearch() },
+    )
+
     if (showSettings) SettingsDialog(
         updateMessage = vm.updateMessage, onCheckUpdates = { vm.checkForUpdates(manual = true) },
         onDismiss = { showSettings = false; vm.clearUpdateMessage() },
@@ -102,7 +130,7 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
 @Composable
 internal fun Header(
     subtitle: String, loading: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit,
-    searchActive: Boolean = false, onSearch: () -> Unit = {},
+    searchActive: Boolean = false, onSearch: () -> Unit = {}, onExplore: () -> Unit = {},
 ) {
     Column {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -111,11 +139,44 @@ internal fun Header(
                 Text(subtitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             FilledTonalIconButton(onClick = onSearch) { Icon(if (searchActive) Icons.Default.Close else Icons.Default.Search, if (searchActive) "Close search" else "Search") }
+            FilledTonalIconButton(onClick = onExplore) { Icon(Icons.Default.Place, "Look up another area") }
             FilledTonalIconButton(onClick = onRefresh) { Icon(Icons.Default.MyLocation, "Refresh my location") }
             FilledTonalIconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
         }
         Box(Modifier.fillMaxWidth().height(3.dp)) { if (loading) LinearProgressIndicator(Modifier.fillMaxWidth()) }
     }
+}
+
+@Composable
+private fun ExploreDialog(
+    results: List<GeoResult>?, busy: Boolean, message: String?,
+    onSearch: (String) -> Unit, onPick: (GeoResult) -> Unit, onDismiss: () -> Unit,
+) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Look up another area", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text("See restaurants around a place you are going to. Only what you type is sent to OpenStreetMap, never where you are.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    text, { text = it }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small,
+                    placeholder = { Text("e.g. Indiranagar, Bengaluru") },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { onSearch(text) }),
+                )
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+                message?.let { Text(it, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                results?.forEach { r ->
+                    Text(r.label, Modifier.fillMaxWidth().clickable { onPick(r) }.padding(vertical = 12.dp), style = MaterialTheme.typography.bodyMedium)
+                    HorizontalDivider()
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSearch(text) }, enabled = text.isNotBlank() && !busy) { Text("Search") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
