@@ -490,6 +490,9 @@ private fun PlaceSheet(p: Place, picked: Boolean, isFavorite: Boolean, onToggleF
                 }
                 FilledTonalIconButton(onClick = { share(ctx, p) }, Modifier.size(48.dp)) { Icon(Icons.Default.Share, "Share this place") }
             }
+            OutlinedButton(onClick = { openRide(ctx, p) }, Modifier.fillMaxWidth().padding(top = 8.dp, end = 8.dp).height(44.dp)) {
+                Icon(Icons.Default.DirectionsCar, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Get a ride (Uber)")
+            }
             PlaceLinks.osmEdit(p)?.let { url ->
                 TextButton(onClick = { open(ctx, Uri.parse(url), Intent.ACTION_VIEW) }, Modifier.padding(top = 2.dp)) {
                     Icon(Icons.Default.Edit, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
@@ -560,6 +563,13 @@ private fun EmptyState(savedOnly: Boolean = false) {
 /** Walking navigation in Google Maps if present, else any map app's pin, else the browser. */
 private fun openDirections(ctx: Context, p: Place) {
     for (url in listOf(PlaceLinks.walkingNavigation(p), PlaceLinks.mapPin(p), PlaceLinks.mapsWebDirections(p))) {
+        if (runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
+    }
+}
+
+/** The Uber app with this place as the destination, else Uber's website. */
+private fun openRide(ctx: Context, p: Place) {
+    for (url in listOf(PlaceLinks.uberApp(p), PlaceLinks.uberWeb(p))) {
         if (runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
     }
 }

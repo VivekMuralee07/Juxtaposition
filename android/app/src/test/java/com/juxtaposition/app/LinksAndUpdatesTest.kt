@@ -9,6 +9,14 @@ class LinksAndUpdatesTest {
                       address: String? = null, hours: String? = null, phone: String? = null, website: String? = null) =
         Place(id, name, type, cuisine, lat, lng, km, 40, dir, address, hours, phone, website, null)
 
+    // ---- ride ----
+    @Test fun uberLinksCarryTheDestinationButNotYourPosition() {
+        val p = place(name = "Meghana Foods & Co", lat = 12.93521234, lng = 77.62459)
+        val app = PlaceLinks.uberApp(p)
+        assertEquals("uber://?action=setPickup&pickup=my_location&dropoff[latitude]=12.935212&dropoff[longitude]=77.624590&dropoff[nickname]=Meghana%20Foods%20%26%20Co", app)
+        assertEquals(app.replaceFirst("uber://", "https://m.uber.com/ul/"), PlaceLinks.uberWeb(p))
+    }
+
     // ---- directions ----
     @Test fun directionsLinks() {
         val p = place(lat = 12.93521234, lng = 77.62459)

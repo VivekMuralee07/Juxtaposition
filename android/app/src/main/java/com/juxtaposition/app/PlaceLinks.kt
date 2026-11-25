@@ -17,6 +17,11 @@ object PlaceLinks {
     fun mapsWebDirections(p: Place) = "https://www.google.com/maps/dir/?api=1&destination=${ll(p)}&travelmode=walking"
     fun mapsWebPlace(p: Place) = "https://www.google.com/maps/search/?api=1&query=${ll(p)}"
 
+    /** Uber's documented deep link: opens the Uber app with the place as the destination and your own location as pickup (Uber fills that in, we never send it). */
+    fun uberApp(p: Place) = "uber://?action=setPickup&pickup=my_location&dropoff[latitude]=${coord(p.lat)}&dropoff[longitude]=${coord(p.lng)}&dropoff[nickname]=${enc(p.name)}"
+    /** The same request as a web link: Uber's website, which also opens the app on phones that have it. */
+    fun uberWeb(p: Place) = "https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${coord(p.lat)}&dropoff[longitude]=${coord(p.lng)}&dropoff[nickname]=${enc(p.name)}"
+
     /** "osm:node/123" -> ("node", 123), or null for anything else. */
     fun osmRef(p: Place): Pair<String, Long>? =
         Regex("^osm:(node|way|relation)/(\\d+)$").matchEntire(p.id)?.let { it.groupValues[1] to it.groupValues[2].toLong() }
