@@ -17,6 +17,11 @@ class LinksAndUpdatesTest {
         assertEquals(app.replaceFirst("uber://", "https://m.uber.com/ul/"), PlaceLinks.uberWeb(p))
     }
 
+    @Test fun rapidoDropTextIsNameAndAddress() {
+        assertEquals("Meghana Foods, 12 MG Road", PlaceLinks.rapidoDropText(place(name = "Meghana Foods", address = "12 MG Road")))
+        assertEquals("Meghana Foods", PlaceLinks.rapidoDropText(place(name = "Meghana Foods")))
+    }
+
     // ---- directions ----
     @Test fun directionsLinks() {
         val p = place(lat = 12.93521234, lng = 77.62459)

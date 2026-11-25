@@ -22,6 +22,10 @@ object PlaceLinks {
     /** The same request as a web link: Uber's website, which also opens the app on phones that have it. */
     fun uberWeb(p: Place) = "https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[latitude]=${coord(p.lat)}&dropoff[longitude]=${coord(p.lng)}&dropoff[nickname]=${enc(p.name)}"
 
+    const val RAPIDO_PACKAGE = "com.rapido.passenger"
+    /** Rapido publishes no way to pre-fill a destination, so the app copies this for you to paste into Rapido's drop box. */
+    fun rapidoDropText(p: Place) = listOfNotNull(p.name, p.address?.takeIf { it.isNotBlank() }).joinToString(", ")
+
     /** "osm:node/123" -> ("node", 123), or null for anything else. */
     fun osmRef(p: Place): Pair<String, Long>? =
         Regex("^osm:(node|way|relation)/(\\d+)$").matchEntire(p.id)?.let { it.groupValues[1] to it.groupValues[2].toLong() }

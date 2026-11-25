@@ -490,8 +490,13 @@ private fun PlaceSheet(p: Place, picked: Boolean, isFavorite: Boolean, onToggleF
                 }
                 FilledTonalIconButton(onClick = { share(ctx, p) }, Modifier.size(48.dp)) { Icon(Icons.Default.Share, "Share this place") }
             }
-            OutlinedButton(onClick = { openRide(ctx, p) }, Modifier.fillMaxWidth().padding(top = 8.dp, end = 8.dp).height(44.dp)) {
-                Icon(Icons.Default.DirectionsCar, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Get a ride (Uber)")
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp, end = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { openRide(ctx, p) }, Modifier.weight(1f).height(44.dp)) {
+                    Icon(Icons.Default.DirectionsCar, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Uber")
+                }
+                OutlinedButton(onClick = { openRapido(ctx, p) }, Modifier.weight(1f).height(44.dp)) {
+                    Icon(Icons.Default.TwoWheeler, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Rapido")
+                }
             }
             PlaceLinks.osmEdit(p)?.let { url ->
                 TextButton(onClick = { open(ctx, Uri.parse(url), Intent.ACTION_VIEW) }, Modifier.padding(top = 2.dp)) {
@@ -571,6 +576,25 @@ private fun openDirections(ctx: Context, p: Place) {
 private fun openRide(ctx: Context, p: Place) {
     for (url in listOf(PlaceLinks.uberApp(p), PlaceLinks.uberWeb(p))) {
         if (runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
+    }
+}
+
+/**
+ * Rapido has no public link that pre-fills a destination, so this opens the app (or its Play Store page) and copies
+ * the place's name and address; paste it into Rapido's drop box.
+ */
+private fun openRapido(ctx: Context, p: Place) {
+    val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+    runCatching { clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Drop location", PlaceLinks.rapidoDropText(p))) }
+    val launch = ctx.packageManager.getLaunchIntentForPackage(PlaceLinks.RAPIDO_PACKAGE)
+    if (launch != null) {
+        android.widget.Toast.makeText(ctx, "Copied. Paste it as your drop location in Rapido.", android.widget.Toast.LENGTH_LONG).show()
+        runCatching { ctx.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    } else {
+        android.widget.Toast.makeText(ctx, "Rapido isn't installed. Opening its store page.", android.widget.Toast.LENGTH_LONG).show()
+        for (url in listOf("market://details?id=${PlaceLinks.RAPIDO_PACKAGE}", "https://play.google.com/store/apps/details?id=${PlaceLinks.RAPIDO_PACKAGE}")) {
+            if (runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
+        }
     }
 }
 
