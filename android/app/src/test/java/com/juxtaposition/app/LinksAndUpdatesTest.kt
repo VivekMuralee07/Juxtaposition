@@ -107,3 +107,13 @@ class LinksAndUpdatesTest {
         assertFalse(UpdateChecker.shouldCheck(1_000, 1_000 + day - 1)); assertFalse(UpdateChecker.shouldCheck(5_000, 5_000))
     }
 }
+
+class ApkInstallerTest {
+    @org.junit.Test fun onlyGithubHttpsApkLinksAreDownloadedInApp() {
+        org.junit.Assert.assertTrue(ApkInstaller.isTrustedUrl("https://github.com/VivekMuralee07/Juxtaposition/releases/download/v1.12.0/NearbyEats.apk"))
+        org.junit.Assert.assertFalse(ApkInstaller.isTrustedUrl("http://github.com/x/y/releases/download/v1/NearbyEats.apk"))
+        org.junit.Assert.assertFalse(ApkInstaller.isTrustedUrl("https://evil.example.com/NearbyEats.apk"))
+        org.junit.Assert.assertFalse(ApkInstaller.isTrustedUrl("https://github.com/VivekMuralee07/Juxtaposition/releases/tag/v1.12.0"))
+        org.junit.Assert.assertFalse(ApkInstaller.isTrustedUrl("not a url"))
+    }
+}

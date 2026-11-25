@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalContext
 import com.juxtaposition.app.BuildConfig
+import com.juxtaposition.app.ApkInstaller
 import com.juxtaposition.app.UpdateInfo
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -45,9 +46,17 @@ fun AppRoot(vm: AppViewModel, onRequestLocation: () -> Unit) {
             )
             vm.update?.let { info ->
                 val ctx = LocalContext.current
+                val inBrowser = { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }; Unit }
+                val install = {
+                    vm.readyApk?.let { apk ->
+                        if (ApkInstaller.canInstall(ctx)) runCatching { ApkInstaller.install(ctx, apk) }.onFailure { inBrowser() }
+                        else runCatching { ApkInstaller.askPermission(ctx) }.onFailure { inBrowser() }
+                    }
+                    Unit
+                }
                 UpdateBanner(
-                    info,
-                    onDownload = { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } },
+                    info, downloadPct = vm.downloadPct,
+                    onDownload = { if (vm.readyApk != null) install() else vm.downloadUpdate(onFail = inBrowser) },
                     onLater = vm::dismissUpdate,
                 )
             }
@@ -128,7 +137,7 @@ private fun SettingsDialog(updateMessage: String?, onCheckUpdates: () -> Unit, o
 }
 
 @Composable
-internal fun UpdateBanner(info: UpdateInfo, onDownload: () -> Unit, onLater: () -> Unit) {
+internal fun UpdateBanner(info: UpdateInfo, downloadPct: Int? = null, onDownload: () -> Unit, onLater: () -> Unit) {
     androidx.compose.material3.Surface(
         color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -136,10 +145,18 @@ internal fun UpdateBanner(info: UpdateInfo, onDownload: () -> Unit, onLater: () 
         Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Update available", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                Text("Version ${info.version} is ready to download.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(
+                    when {
+                        downloadPct == null -> "Version ${info.version} is ready to download."
+                        downloadPct >= AppViewModel.DOWNLOAD_READY -> "Version ${info.version} downloaded. Tap Install to finish."
+                        downloadPct >= 0 -> "Downloading version ${info.version}… $downloadPct%"
+                        else -> "Downloading version ${info.version}…"
+                    },
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
             }
-            TextButton(onClick = onLater) { Text("Later") }
-            Button(onClick = onDownload) { Text("Download") }
+            val busy = downloadPct != null && downloadPct < AppViewModel.DOWNLOAD_READY
+            TextButton(onClick = onLater, enabled = !busy) { Text("Later") }
+            Button(onClick = onDownload, enabled = !busy) { Text(if (downloadPct == AppViewModel.DOWNLOAD_READY) "Install" else "Download") }
             Spacer(Modifier.width(4.dp))
         }
     }
