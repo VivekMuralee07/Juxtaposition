@@ -12,8 +12,8 @@ android {
         applicationId = "com.juxtaposition.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 18
-        versionName = "1.15.0"
+        versionCode = 19
+        versionName = "1.15.1"
     }
 
     // Release signing: the keystore is NEVER in the repo. Provide it through environment variables
