@@ -586,6 +586,12 @@ private fun openRide(ctx: Context, p: Place) {
 private fun openRapido(ctx: Context, p: Place) {
     val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
     runCatching { clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Drop location", PlaceLinks.rapidoDropText(p))) }
+    // If Rapido declares that it opens map locations (geo: links), hand it the place; otherwise just open the app.
+    val geo = Intent(Intent.ACTION_VIEW, Uri.parse(PlaceLinks.mapPin(p))).setPackage(PlaceLinks.RAPIDO_PACKAGE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    if (runCatching { geo.resolveActivity(ctx.packageManager) != null }.getOrDefault(false)) {
+        android.widget.Toast.makeText(ctx, "Opening Rapido. If the drop is empty, paste the copied place.", android.widget.Toast.LENGTH_LONG).show()
+        if (runCatching { ctx.startActivity(geo) }.isSuccess) return
+    }
     val launch = ctx.packageManager.getLaunchIntentForPackage(PlaceLinks.RAPIDO_PACKAGE)
     if (launch != null) {
         android.widget.Toast.makeText(ctx, "Copied. Paste it as your drop location in Rapido.", android.widget.Toast.LENGTH_LONG).show()
