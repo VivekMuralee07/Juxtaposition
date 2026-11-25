@@ -43,7 +43,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var compass: CompassSensor? = null
     private var declination = 0f
 
-    /** The user's live position. */
+    /** A searched area the list is centred on instead of the user's position (null = around the user). */
+    var exploring by mutableStateOf<GeoResult?>(null); private set
+    /** Results of the last area search (null = none yet) and whether one is running. */
+    var geoResults by mutableStateOf<List<GeoResult>?>(null); private set
+    var geoBusy by mutableStateOf(false); private set
+    var geoMessage by mutableStateOf<String?>(null); private set
+    /** The list's centre: the user's live position, or the searched area while [exploring]. */
     var origin by mutableStateOf<Pair<Double, Double>?>(null); private set
     var radiusM by mutableIntStateOf(LiveUpdates.MAX_RADIUS_M); private set
     var typeFilter by mutableStateOf<String?>(null); private set
@@ -202,6 +208,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun dismissError() { error = null }
 
+    fun searchArea(q: String) {
+        if (q.isBlank() || geoBusy) return
+        geoBusy = true; geoMessage = null
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { Geocoder.search(q) } }
+                .onSuccess { geoResults = it; geoMessage = if (it.isEmpty()) "No match. Try a fuller name, like the area and city." else null }
+                .onFailure { geoMessage = "Couldn't search. Check your connection and try again." }
+            geoBusy = false
+        }
+    }
+
+    fun clearAreaSearch() { geoResults = null; geoMessage = null }
+
+    /** Centres the list on a searched area; your own position is left alone until you go back to it. */
+    fun explore(spot: GeoResult) {
+        exploring = spot
+        selectedId = null; pickedId = null; cuisine = null; savedOnly = false; query = ""
+        places = emptyList(); fetchedAt = null; notice = null; dataInfo = null; fixInfo = null
+        clearAreaSearch()
+        setOrigin(spot.lat, spot.lng)
+        syncCompass()
+        load(userInitiated = true)
+    }
+
     private fun setOrigin(lat: Double, lng: Double) {
         origin = lat to lng
         declination = CompassSensor.declination(lat, lng) // magnetic north -> true north
@@ -215,7 +245,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun onBackground() { foreground = false; syncCompass() }
 
     private fun syncCompass() {
-        val wanted = foreground && headingUp && viewMode == ViewMode.RADAR
+        val wanted = foreground && headingUp && viewMode == ViewMode.RADAR && exploring == null
         if (!wanted) { compass?.stop(); return }
         val c = compass ?: CompassSensor(getApplication()).also { compass = it }
         compassAvailable = c.available
@@ -233,16 +263,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun locate() {
         val ctx = getApplication<Application>()
         loading = true; error = null
+        if (exploring != null) { exploring = null; places = emptyList(); fetchedAt = null; notice = null; dataInfo = null; selectedId = null; pickedId = null; cuisine = null; syncCompass() }
+        /** A fix that arrives after you chose an area to explore is ignored. */
+        fun firstFix(lat: Double, lng: Double) { if (exploring != null) return; setOrigin(lat, lng); load(userInitiated = true) }
         fun fallback() {
             val last = locationManager.getProviders(true).mapNotNull { runCatching { locationManager.getLastKnownLocation(it) }.getOrNull() }.maxByOrNull { it.time }
-            if (last != null) { fixInfo = DataLine.fix(last.provider, if (last.hasAccuracy()) last.accuracy else null); setOrigin(last.latitude, last.longitude); load(userInitiated = true) }
+            if (last != null) { fixInfo = DataLine.fix(last.provider, if (last.hasAccuracy()) last.accuracy else null); firstFix(last.latitude, last.longitude) }
             else { loading = false; error = "Couldn't get your location. Turn on location services and tap Refresh." }
         }
         val provider = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).firstOrNull { runCatching { locationManager.isProviderEnabled(it) }.getOrDefault(false) }
         if (provider != null && android.os.Build.VERSION.SDK_INT >= 30) {
             runCatching {
                 locationManager.getCurrentLocation(provider, null, ContextCompat.getMainExecutor(ctx)) { loc ->
-                    if (loc != null) { fixInfo = DataLine.fix(loc.provider, if (loc.hasAccuracy()) loc.accuracy else null); setOrigin(loc.latitude, loc.longitude); load(userInitiated = true) } else fallback()
+                    if (loc != null) { fixInfo = DataLine.fix(loc.provider, if (loc.hasAccuracy()) loc.accuracy else null); firstFix(loc.latitude, loc.longitude) } else fallback()
                 }
             }.onFailure { fallback() }
         } else fallback()
@@ -277,6 +310,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() { stopLocationUpdates(); compass?.stop() }
 
     private fun onLiveFix(loc: Location) {
+        if (exploring != null) return // the list is centred on a searched area, not on you
         if (!LiveUpdates.accurateEnough(if (loc.hasAccuracy()) loc.accuracy else null)) return
         val here = loc.latitude to loc.longitude
         fixInfo = DataLine.fix(loc.provider, if (loc.hasAccuracy()) loc.accuracy else null)

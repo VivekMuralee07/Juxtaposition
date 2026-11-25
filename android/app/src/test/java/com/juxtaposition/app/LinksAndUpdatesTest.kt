@@ -117,3 +117,24 @@ class ApkInstallerTest {
         org.junit.Assert.assertFalse(ApkInstaller.isTrustedUrl("not a url"))
     }
 }
+
+class GeocoderTest {
+    @org.junit.Test fun parsesResultsAndShortensTheName() {
+        val json = """[{"lat":"12.9784","lon":"77.6408","display_name":"Indiranagar, East Bengaluru, Bengaluru, Karnataka, India"},
+            {"lat":"abc","lon":"1","display_name":"Bad"},{"lat":"95","lon":"1","display_name":"Off the map"},{"lat":"1","lon":"2","display_name":""}]"""
+        val r = Geocoder.parse(json)
+        org.junit.Assert.assertEquals(1, r.size)
+        org.junit.Assert.assertEquals("Indiranagar, East Bengaluru, Bengaluru", r[0].label)
+        org.junit.Assert.assertEquals(12.9784, r[0].lat, 1e-9)
+        org.junit.Assert.assertEquals(77.6408, r[0].lng, 1e-9)
+    }
+
+    @org.junit.Test fun garbageGivesNoResults() {
+        org.junit.Assert.assertTrue(Geocoder.parse("not json").isEmpty())
+        org.junit.Assert.assertTrue(Geocoder.parse("[]").isEmpty())
+    }
+
+    @org.junit.Test fun queryIsEncodedAndSentOnlyAsText() {
+        org.junit.Assert.assertTrue(Geocoder.url(" MG Road & Brigade ").endsWith("&q=MG+Road+%26+Brigade"))
+    }
+}
