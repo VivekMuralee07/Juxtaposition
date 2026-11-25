@@ -102,6 +102,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** In-app download of the update: null = not started, 0..100 = downloading (-1 = size unknown), 101 = ready to install. */
+    var downloadPct by mutableStateOf<Int?>(null); private set
+    private var downloadedApk: java.io.File? = null
+    val readyApk: java.io.File? get() = if (downloadPct == DOWNLOAD_READY) downloadedApk else null
+
+    /** Downloads the update inside the app; [onFail] is called on the main thread so the UI can fall back to the browser. */
+    fun downloadUpdate(onFail: () -> Unit) {
+        val info = update ?: return
+        if (downloadPct != null && downloadPct != DOWNLOAD_READY) return
+        val ctx = getApplication<Application>()
+        if (!ApkInstaller.isTrustedUrl(info.downloadUrl)) { onFail(); return }
+        downloadPct = 0
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val f = ApkInstaller.download(ctx, info.downloadUrl) { pct -> downloadPct = pct }
+                    if (!ApkInstaller.looksRight(ctx, f)) { f.delete(); throw java.io.IOException("Wrong file") }
+                    f
+                }
+            }.onSuccess { downloadedApk = it; downloadPct = DOWNLOAD_READY }
+                .onFailure { downloadPct = null; error = "Couldn't download the update. Opening it in your browser instead."; onFail() }
+        }
+    }
+
     fun dismissUpdate() {
         update?.let { prefs.edit().putString("dismissedUpdate", it.version).apply() }
         update = null
@@ -321,4 +345,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         is java.io.IOException -> "Can't reach OpenStreetMap. Check your connection."
         else -> t.message ?: "Something went wrong"
     }
+
+    companion object { const val DOWNLOAD_READY = 101 }
 }
