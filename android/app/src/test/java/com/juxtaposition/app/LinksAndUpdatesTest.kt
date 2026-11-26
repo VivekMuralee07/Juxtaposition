@@ -151,3 +151,33 @@ class GeocoderTest {
         org.junit.Assert.assertTrue(Geocoder.url(" MG Road & Brigade ").endsWith("&q=MG+Road+%26+Brigade"))
     }
 }
+
+class MapGeoTest {
+    private fun p(id: String, type: String, lat: Double, lng: Double) =
+        Place(id, "N", type, null, lat, lng, 0.1, 0, "N", null, null, null, null, null)
+
+    @org.junit.Test fun placesJsonHasLngLatOrderAndSelectedIsBigger() {
+        val json = org.json.JSONObject(MapGeo.placesJson(listOf(p("a", "cafe", 12.9, 77.6), p("b", "restaurant", 13.0, 77.7)), "b"))
+        val f = json.getJSONArray("features")
+        org.junit.Assert.assertEquals(2, f.length())
+        val first = f.getJSONObject(0)
+        org.junit.Assert.assertEquals(77.6, first.getJSONObject("geometry").getJSONArray("coordinates").getDouble(0), 1e-9) // longitude first
+        org.junit.Assert.assertEquals("#29B6A8", first.getJSONObject("properties").getString("color"))
+        org.junit.Assert.assertEquals(7, first.getJSONObject("properties").getInt("r"))
+        org.junit.Assert.assertEquals(11, f.getJSONObject(1).getJSONObject("properties").getInt("r"))
+    }
+
+    @org.junit.Test fun ringIsClosedAndAboutTheRightSize() {
+        val coords = org.json.JSONObject(MapGeo.ringJson(12.9, 77.6, 1000)).getJSONObject("geometry").getJSONArray("coordinates")
+        org.junit.Assert.assertEquals(65, coords.length())
+        org.junit.Assert.assertEquals(coords.getJSONArray(0).getDouble(0), coords.getJSONArray(64).getDouble(0), 1e-9)
+        val dLat = coords.getJSONArray(16).getDouble(1) - 12.9 // a quarter turn: due north
+        org.junit.Assert.assertEquals(1000.0, dLat * 111_320.0, 5.0)
+    }
+
+    @org.junit.Test fun zoomShrinksAsTheRadiusGrows() {
+        val z500 = MapGeo.zoomForRadius(500, 12.9); val z1000 = MapGeo.zoomForRadius(1000, 12.9)
+        org.junit.Assert.assertEquals(1.0, z500 - z1000, 1e-9)
+        org.junit.Assert.assertTrue(z1000 in 13.0..14.0)
+    }
+}

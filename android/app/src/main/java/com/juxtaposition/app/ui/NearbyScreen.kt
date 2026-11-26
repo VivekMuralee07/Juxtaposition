@@ -99,6 +99,7 @@ fun NearbyScreen(vm: AppViewModel) {
         favoriteIds = vm.favoriteIds, pickedId = vm.pickedId, refreshing = vm.loading,
         dataLine = vm.dataLine(), dataLineShort = vm.dataLineShort(),
         compass = CompassUi(vm.headingDeg, vm.headingUp, vm.compassAvailable, vm.compassLow, explore = vm.exploring != null),
+        center = vm.origin,
     )
 }
 
@@ -110,7 +111,7 @@ fun NearbyContent(
     filters: FilterUi, actions: NearbyActions,
     favoriteIds: Set<String> = emptySet(), pickedId: String? = null, refreshing: Boolean = false,
     animateRadar: Boolean = true, dataLine: String? = null, dataLineShort: String? = null,
-    compass: CompassUi = CompassUi(),
+    compass: CompassUi = CompassUi(), center: Pair<Double, Double>? = null,
 ) {
     Column(Modifier.fillMaxSize()) {
         // view switcher
@@ -118,6 +119,7 @@ fun NearbyContent(
             val modes = listOf(
                 Triple(ViewMode.LIST, "List", Icons.AutoMirrored.Filled.ViewList),
                 Triple(ViewMode.RADAR, "Radar", Icons.Default.Radar),
+                Triple(ViewMode.MAP, "Map", Icons.Default.Map),
             )
             modes.forEachIndexed { i, (m, label, icon) ->
                 SegmentedButton(
@@ -166,7 +168,9 @@ fun NearbyContent(
                 loading && places.isEmpty() -> SkeletonList()
                 places.isEmpty() -> EmptyState(filters.savedOnly)
                 else -> Crossfade(viewMode, animationSpec = tween(220), label = "view") { mode ->
-                    if (mode == ViewMode.LIST) {
+                    if (mode == ViewMode.MAP && center != null) {
+                        MapCard(places, selected, center, filters.radiusM, actions.onSelect, actions.onPick.takeIf { selected == null })
+                    } else if (mode == ViewMode.LIST) {
                         PlaceList(
                             places, selected, favoriteIds, grouped = filters.sort == SortMode.NEAREST && !filters.savedOnly,
                             onSelect = { actions.onSelect(it) }, refreshing = refreshing, onRefresh = actions.onRefresh,
@@ -236,7 +240,7 @@ private fun SortRow(count: Int, sort: SortMode, onSort: (SortMode) -> Unit) {
 
 /** A floating "Pick for me" button. Place it inside a Box, aligned to the bottom centre. */
 @Composable
-private fun PickButton(modifier: Modifier, onClick: () -> Unit) {
+internal fun PickButton(modifier: Modifier, onClick: () -> Unit) {
     ExtendedFloatingActionButton(
         onClick = onClick, modifier = modifier,
         icon = { Icon(Icons.Default.Casino, null) }, text = { Text("Pick for me") },

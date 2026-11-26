@@ -20,7 +20,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class ViewMode { LIST, RADAR }
+enum class ViewMode { LIST, RADAR, MAP }
 
 /**
  * One list is fetched for a 1 km circle around the user. Everything on screen (500 m / 1 km, type, search,
