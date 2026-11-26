@@ -15,6 +15,7 @@ dist/      NearbyEats.apk (signed release build, Android 8+)
 - **Food-specific icons** (🍛 biryani, 🍕 pizza, 🍔 burgers, ☕ coffee, 🥟 momos, …) chosen from the cuisine tag, or the place's name when there is no cuisine.
 - **Radar rings are walking minutes** ("5 min · 10 min · 1 km · 16 min"; about 5 km/h with a 1.3x street detour). **Pinch or double-tap to zoom** (up to 6x; the rings rescale), tap a place for a light haptic tick.
 - List: **pull down to refresh**; items slide into place when you change a filter or walk past one; List/Radar cross-fade. Splash screen on launch and a **themed app icon** for Android 13+.
+- **Map view** (List / Radar / Map switcher): a street map with the places as coloured dots, your position, and a dashed ring at the search radius. Tap a dot to open its details. Map drawing uses MapLibre with free OpenFreeMap tiles (needs internet; List and Radar work without tiles). The camera re-centres when you change radius or move about 100 m, not under your finger on every GPS fix. Adds about 24 MB to the APK for the map engine.
 - **What are you craving?** A row of cuisine chips built from what is actually nearby (🍛 Biryani 4, ☕ Coffee 2, …), most common first. Tap one to filter; tap again to clear.
 - **Pick for me**: a button that suggests one random place that is not closed (places confirmed open come first, then ones with unknown hours); "Not this one" offers another, with no repeats until everything has been offered.
 - **Closing soon**: places closing within 45 minutes show "Closes in 20 min" in amber.

@@ -12,8 +12,10 @@ android {
         applicationId = "com.juxtaposition.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 19
-        versionName = "1.15.1"
+        versionCode = 20
+        versionName = "1.16.0"
+        // The map engine ships native code per CPU type; phones are arm, so leave out the x86 emulator builds to keep the APK small.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     // Release signing: the keystore is NEVER in the repo. Provide it through environment variables
@@ -60,6 +62,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("org.maplibre.gl:android-sdk:11.13.5")
     implementation("androidx.core:core-splashscreen:1.0.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
